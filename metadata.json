@@ -1,0 +1,6 @@
+{
+  "name": "SARKAR AI – Offline Intelligent Government Document Processing System",
+  "description": "Offline-ready Indian GovTech platform for digitizing handwritten Kannada and English government forms with AI/OCR field extraction, confidence scoring, split-screen verification, and Python FastAPI integration.",
+  "requestFramePermissions": ["camera"],
+  "majorCapabilities": ["MAJOR_CAPABILITY_SERVER_SIDE_GEMINI_API"]
+}
