@@ -1,85 +1,117 @@
 import React, { useState } from 'react';
-import { Navigate, NavLink, Outlet, useLocation, useNavigate } from 'react-router-dom';
+import { NavLink, Outlet, useLocation, useNavigate } from 'react-router-dom';
 import {
   LayoutDashboard,
-  Building2,
-  UploadCloud,
-  Cpu,
+  FilePlus2,
+  ScanLine,
+  ShieldCheck,
   FolderKanban,
-  Bot,
+  Route as RouteIcon,
+  MessageSquareText,
+  Building2,
   BarChart3,
-  History,
+  Bell,
+  ClipboardList,
   Settings,
-  Sun,
-  Moon,
+  PanelLeftClose,
+  PanelLeftOpen,
   WifiOff,
   Wifi,
-  LogOut,
+  ChevronRight,
   Menu,
   X,
-  Landmark,
   CheckCircle2,
   AlertTriangle,
   Info,
 } from 'lucide-react';
 import { useApp } from '../../context/AppContext';
-import { SarkarAssistantWidget } from '../assistant/SarkarAssistantWidget';
+import { useLanguage } from '../../context/LanguageContext';
+import { DepartmentId, UserRole } from '../../types';
 
 const NAV_ITEMS = [
-  { to: '/', label: 'Dashboard', icon: LayoutDashboard, end: true },
-  { to: '/departments', label: 'Departments', icon: Building2 },
-  { to: '/upload', label: 'Upload Document', icon: UploadCloud },
-  { to: '/processing', label: 'AI Processing', icon: Cpu },
-  { to: '/documents', label: 'Document Records', icon: FolderKanban },
-  { to: '/assistant', label: 'AI Assistant', icon: Bot },
-  { to: '/analytics', label: 'Analytics', icon: BarChart3 },
-  { to: '/history', label: 'History', icon: History },
-  { to: '/settings', label: 'Settings', icon: Settings },
+  { to: '/', key: 'nav.dashboard', icon: LayoutDashboard, end: true },
+  { to: '/intake', key: 'nav.intake', icon: FilePlus2 },
+  { to: '/scanner', key: 'nav.scanner', icon: ScanLine },
+  { to: '/verification', key: 'nav.verification', icon: ShieldCheck },
+  { to: '/files', key: 'nav.files', icon: FolderKanban },
+  { to: '/tracking', key: 'nav.tracking', icon: RouteIcon },
+  { to: '/nammadocs', key: 'nav.nammadocs', icon: MessageSquareText },
+  { to: '/departments', key: 'nav.departments', icon: Building2 },
+  { to: '/reports', key: 'nav.reports', icon: BarChart3 },
+  { to: '/notifications', key: 'nav.notifications', icon: Bell },
+  { to: '/audit', key: 'nav.audit', icon: ClipboardList },
+  { to: '/settings', key: 'nav.settings', icon: Settings },
 ];
 
-function getPageTitle(pathname: string): string {
-  if (pathname === '/') return 'Dashboard';
-  if (pathname.startsWith('/departments')) return 'Government Departments';
-  if (pathname.startsWith('/upload')) return 'Document Upload Studio';
-  if (pathname.startsWith('/processing')) return 'AI Document Processing';
-  if (pathname.startsWith('/documents/')) return 'Extracted Data Review';
-  if (pathname.startsWith('/documents')) return 'Document Records';
-  if (pathname.startsWith('/assistant')) return 'SARKAR AI Assistant';
-  if (pathname.startsWith('/analytics')) return 'Analytics';
-  if (pathname.startsWith('/history')) return 'Processing History';
-  if (pathname.startsWith('/settings')) return 'Settings & Offline Engine';
-  return 'SARKAR AI';
-}
+const ROUTE_LABEL_KEYS: Record<string, string> = {
+  '/': 'nav.dashboard',
+  '/intake': 'nav.intake',
+  '/scanner': 'nav.scanner',
+  '/verification': 'nav.verification',
+  '/files': 'nav.files',
+  '/tracking': 'nav.tracking',
+  '/nammadocs': 'nav.nammadocs',
+  '/departments': 'nav.departments',
+  '/police': 'dept.police',
+  '/reports': 'nav.reports',
+  '/notifications': 'nav.notifications',
+  '/audit': 'nav.audit',
+  '/settings': 'nav.settings',
+};
+
+const KarnatakaEmblem: React.FC<{ className?: string }> = ({ className = 'w-8 h-8' }) => (
+  <svg
+    viewBox="0 0 48 48"
+    fill="none"
+    xmlns="http://www.w3.org/2000/svg"
+    className={className}
+    aria-hidden="true"
+  >
+    <circle cx="24" cy="24" r="22" stroke="#FBBF24" strokeWidth="2" fill="#0B2545" />
+    <path
+      d="M24 9L28 16H34L29 21L31 29L24 25L17 29L19 21L14 16H20L24 9Z"
+      fill="#FBBF24"
+      fillOpacity="0.92"
+    />
+    <path
+      d="M15 33C18 35.5 30 35.5 33 33"
+      stroke="#93C5FD"
+      strokeWidth="2"
+      strokeLinecap="round"
+    />
+    <circle cx="24" cy="21" r="2.2" fill="#0B2545" />
+  </svg>
+);
 
 export const AppShell: React.FC = () => {
   const {
-    user,
-    logout,
-    theme,
-    toggleTheme,
-    offlineState,
-    toggleOfflineMode,
-    backendMode,
+    activeProfile,
+    switchRole,
+    selectedDepartment,
+    setSelectedDepartment,
+    selectedOffice,
+    setSelectedOffice,
+    availableOffices,
+    isOffline,
+    toggleOfflineStatus,
+    unreadNotificationCount,
     toasts,
     dismissToast,
   } = useApp();
+  const { language, setLanguage, t } = useLanguage();
+  const [collapsed, setCollapsed] = useState(false);
   const [mobileOpen, setMobileOpen] = useState(false);
   const location = useLocation();
   const navigate = useNavigate();
 
-  if (!user) {
-    return <Navigate to="/login" replace />;
-  }
-
-  const pageTitle = getPageTitle(location.pathname);
-
-  const handleSignOut = () => {
-    logout();
-    navigate('/login');
-  };
+  const currentRouteKey =
+    ROUTE_LABEL_KEYS[location.pathname] ||
+    (location.pathname.startsWith('/verification')
+      ? 'nav.verification'
+      : 'nav.dashboard');
 
   return (
-    <div className="min-h-screen flex bg-slate-50 dark:bg-slate-950 text-slate-900 dark:text-slate-100">
+    <div className="min-h-screen flex bg-[#F3F4FA] text-slate-900">
       {/* Mobile Sidebar Backdrop */}
       {mobileOpen && (
         <div
@@ -88,46 +120,62 @@ export const AppShell: React.FC = () => {
         />
       )}
 
-      {/* Sidebar */}
+      {/* Fixed Collapsible Navy-Blue Sidebar */}
       <aside
-        className={`fixed inset-y-0 left-0 z-50 w-64 bg-[#0B1F3A] text-slate-100 flex flex-col border-r border-slate-800 transition-transform duration-200 lg:static lg:translate-x-0 ${
-          mobileOpen ? 'translate-x-0' : '-translate-x-full'
-        }`}
+        className={`fixed inset-y-0 left-0 z-50 flex flex-col bg-gradient-to-b from-[#0B2545] via-[#0F2C59] to-[#13315C] text-white shadow-xl transition-all duration-200 ${
+          collapsed ? 'w-[76px]' : 'w-[268px]'
+        } ${mobileOpen ? 'translate-x-0' : '-translate-x-full lg:translate-x-0'}`}
       >
-        {/* Tricolor subtle top hairline */}
-        <div className="h-1 w-full flex">
-          <div className="flex-1 bg-[#EA580C]" />
-          <div className="flex-1 bg-white/90" />
-          <div className="flex-1 bg-[#16A34A]" />
-        </div>
-
-        {/* Brand Block */}
-        <div className="px-5 py-4 border-b border-white/10 flex items-center justify-between">
+        {/* Top Karnataka Emblem & Branding */}
+        <div className="px-4 py-4 border-b border-white/10 flex items-center justify-between gap-2">
           <div className="flex items-center gap-3 min-w-0">
-            <div className="w-9 h-9 rounded-md bg-white/10 border border-white/15 flex items-center justify-center shrink-0">
-              <Landmark className="w-5 h-5 text-amber-400" />
-            </div>
-            <div className="min-w-0">
-              <div className="font-display text-base font-bold tracking-tight text-white whitespace-nowrap">
-                SARKAR AI
+            <KarnatakaEmblem className="w-9 h-9 shrink-0" />
+            {!collapsed && (
+              <div className="min-w-0">
+                <div className="text-[10px] font-medium text-blue-200 tracking-wide truncate">
+                  {t('brand.gov')}
+                </div>
+                <div className="font-display text-base font-bold text-white tracking-tight truncate">
+                  {t('brand.name')}
+                </div>
               </div>
-              <div className="text-[11px] text-slate-300 truncate">
-                GovTech Document OS
-              </div>
-            </div>
+            )}
           </div>
+
+          <button
+            type="button"
+            onClick={() => setCollapsed((c) => !c)}
+            title={t('header.collapseSidebar')}
+            aria-label={t('header.collapseSidebar')}
+            className="hidden lg:inline-flex p-1.5 rounded-lg text-blue-200 hover:text-white hover:bg-white/10 transition-colors shrink-0"
+          >
+            {collapsed ? (
+              <PanelLeftOpen className="w-4 h-4" />
+            ) : (
+              <PanelLeftClose className="w-4 h-4" />
+            )}
+          </button>
+
           <button
             type="button"
             onClick={() => setMobileOpen(false)}
-            className="lg:hidden p-1.5 rounded-md text-slate-300 hover:text-white hover:bg-white/10"
-            aria-label="Close navigation"
+            aria-label={t('common.close')}
+            className="lg:hidden p-1.5 rounded-lg text-blue-200 hover:text-white hover:bg-white/10"
           >
             <X className="w-4 h-4" />
           </button>
         </div>
 
-        {/* Navigation Links */}
-        <nav className="flex-1 overflow-y-auto px-3 py-4 space-y-1">
+        {!collapsed && (
+          <div className="px-4 py-2.5 border-b border-white/10 bg-[#081C36]/50">
+            <p className="text-[11px] text-blue-100/90 leading-snug">
+              {t('brand.tagline')}
+            </p>
+          </div>
+        )}
+
+        {/* 12 Sidebar Navigation Items */}
+        <nav className="flex-1 overflow-y-auto px-2.5 py-3 space-y-1">
           {NAV_ITEMS.map((item) => {
             const Icon = item.icon;
             return (
@@ -135,169 +183,228 @@ export const AppShell: React.FC = () => {
                 key={item.to}
                 to={item.to}
                 end={item.end}
+                title={collapsed ? t(item.key) : undefined}
                 onClick={() => setMobileOpen(false)}
                 className={({ isActive }) =>
-                  `flex items-center gap-3 px-3 py-2.5 rounded-md text-sm font-medium transition-colors whitespace-nowrap ${
+                  `flex items-center justify-between gap-2.5 px-3 py-2.5 rounded-xl text-xs font-medium transition-all ${
                     isActive
-                      ? 'bg-white/15 text-white'
-                      : 'text-slate-300 hover:text-white hover:bg-white/8'
+                      ? 'bg-[#2563EB] text-white shadow-sm'
+                      : 'text-blue-100/85 hover:text-white hover:bg-white/10'
                   }`
                 }
               >
-                <Icon className="w-4 h-4 shrink-0" />
-                <span className="truncate">{item.label}</span>
+                <div className="flex items-center gap-3 min-w-0">
+                  <Icon className="w-4 h-4 shrink-0" />
+                  {!collapsed && <span className="truncate">{t(item.key)}</span>}
+                </div>
+                {!collapsed && item.to === '/notifications' && unreadNotificationCount > 0 && (
+                  <span className="font-mono tabular-nums text-[11px] font-semibold bg-white/20 text-white px-1.5 py-0.5 rounded-md">
+                    {unreadNotificationCount}
+                  </span>
+                )}
               </NavLink>
             );
           })}
         </nav>
 
-        {/* Offline Node Summary */}
-        <div className="px-4 py-3.5 border-t border-white/10 bg-[#08172C] space-y-2">
-          <div className="flex items-center justify-between text-xs">
-            <span className="font-medium text-slate-200">
-              {offlineState.offlineMode ? 'OFFLINE MODE' : 'SYNC LINK READY'}
-            </span>
-            <span className="font-mono text-[11px] text-emerald-400">
-              {backendMode === 'demo' ? 'Demo' : 'FastAPI'}
-            </span>
-          </div>
-          <p className="text-[11px] text-slate-400 leading-snug">
-            {offlineState.ocrEngine.name} · {offlineState.localDatabase.cachedRecords} local records
-          </p>
-        </div>
-
-        {/* Employee Profile Card */}
-        {user && (
-          <div className="px-4 py-3 border-t border-white/10 flex items-center justify-between gap-2">
-            <div className="flex items-center gap-2.5 min-w-0">
-              <img
-                src={user.avatarUrl}
-                alt={user.name}
-                referrerPolicy="no-referrer"
-                className="w-8 h-8 rounded-md object-cover border border-white/20 shrink-0"
-              />
+        {/* Bottom Officer Summary */}
+        <div className="p-3 border-t border-white/10 bg-[#081C36]/70">
+          <div className="flex items-center gap-2.5">
+            <img
+              src={activeProfile.avatarUrl}
+              alt={activeProfile.name}
+              referrerPolicy="no-referrer"
+              className="w-8 h-8 rounded-lg object-cover border border-white/20 shrink-0"
+            />
+            {!collapsed && (
               <div className="min-w-0">
-                <div className="text-xs font-semibold text-white truncate">{user.name}</div>
-                <div className="text-[11px] text-slate-400 truncate">{user.district}</div>
+                <div className="text-xs font-semibold text-white truncate">
+                  {language === 'kn' ? activeProfile.nameKn : activeProfile.name}
+                </div>
+                <div className="text-[11px] text-blue-200 truncate">
+                  {t(`role.${activeProfile.role}`)}
+                </div>
               </div>
-            </div>
-            <button
-              type="button"
-              onClick={handleSignOut}
-              title="Sign Out"
-              aria-label="Sign Out"
-              className="p-1.5 rounded-md text-slate-300 hover:text-white hover:bg-white/10 transition-colors shrink-0"
-            >
-              <LogOut className="w-4 h-4" />
-            </button>
+            )}
           </div>
-        )}
+        </div>
       </aside>
 
-      {/* Main Content Area */}
-      <div className="flex-1 flex flex-col min-w-0">
-        {/* Top Bar */}
-        <header className="sticky top-0 z-30 h-16 bg-white dark:bg-slate-900 border-b border-slate-200 dark:border-slate-800 px-4 sm:px-6 flex items-center justify-between gap-6">
+      {/* Main Content Wrapper */}
+      <div
+        className={`flex-1 flex flex-col min-w-0 transition-all duration-200 ${
+          collapsed ? 'lg:pl-[76px]' : 'lg:pl-[268px]'
+        }`}
+      >
+        {/* Top Sticky Header */}
+        <header className="sticky top-0 z-30 bg-white/95 backdrop-blur border-b border-indigo-100 px-4 sm:px-6 py-3 flex flex-wrap items-center justify-between gap-4 no-print">
+          {/* Breadcrumbs + Mobile Trigger */}
           <div className="flex items-center gap-3 min-w-0">
             <button
               type="button"
               onClick={() => setMobileOpen(true)}
-              aria-label="Open navigation menu"
-              className="lg:hidden p-2 rounded-md border border-slate-200 dark:border-slate-700 text-slate-700 dark:text-slate-200 hover:bg-slate-100 dark:hover:bg-slate-800"
+              aria-label="Open menu"
+              className="lg:hidden p-2 rounded-lg border border-indigo-100 text-slate-700 hover:bg-indigo-50"
             >
               <Menu className="w-4 h-4" />
             </button>
-            <div className="min-w-0">
-              <div className="flex items-center gap-2 text-xs text-slate-500 dark:text-slate-400 whitespace-nowrap">
-                <span>SARKAR AI</span>
-                <span aria-hidden="true">/</span>
-                <span className="truncate font-medium text-slate-800 dark:text-slate-200">
-                  {pageTitle}
-                </span>
-              </div>
+
+            <div className="flex items-center gap-1.5 text-xs text-slate-500 whitespace-nowrap">
+              <span className="font-semibold text-[#0B2545]">{t('brand.name')}</span>
+              <ChevronRight className="w-3.5 h-3.5 text-slate-400" />
+              <span className="font-medium text-slate-800 truncate">
+                {t(currentRouteKey)}
+              </span>
             </div>
           </div>
 
-          <div className="flex items-center gap-3 shrink-0">
+          {/* Right Controls: Dept, Office, Language, Online/Offline, Notifications, Role */}
+          <div className="flex flex-wrap items-center gap-2.5">
+            {/* Department Selector */}
+            <select
+              aria-label={t('header.department')}
+              value={selectedDepartment}
+              onChange={(e) => setSelectedDepartment(e.target.value as DepartmentId)}
+              className="px-2.5 py-1.5 rounded-lg bg-[#F3F4FA] border border-indigo-100 text-xs font-medium text-slate-800 focus:outline-none focus:ring-2 focus:ring-[#2563EB]"
+            >
+              <option value="all">{t('dept.all')}</option>
+              <option value="police">{t('dept.police')}</option>
+              <option value="gram_panchayat">{t('dept.gram_panchayat')}</option>
+              <option value="revenue">{t('dept.revenue')}</option>
+              <option value="hospitals">{t('dept.hospitals')}</option>
+              <option value="education">{t('dept.education')}</option>
+              <option value="municipal">{t('dept.municipal')}</option>
+            </select>
+
+            {/* Police Station / Office Selector */}
+            <select
+              aria-label={t('header.office')}
+              value={selectedOffice}
+              onChange={(e) => setSelectedOffice(e.target.value)}
+              className="hidden md:block max-w-[200px] px-2.5 py-1.5 rounded-lg bg-[#F3F4FA] border border-indigo-100 text-xs font-medium text-slate-800 truncate focus:outline-none focus:ring-2 focus:ring-[#2563EB]"
+            >
+              {availableOffices.map((off) => (
+                <option key={off} value={off}>
+                  {off}
+                </option>
+              ))}
+            </select>
+
+            {/* Global Language Switcher: English | ಕನ್ನಡ */}
+            <div
+              role="group"
+              aria-label={t('header.language')}
+              className="inline-flex items-center p-0.5 rounded-lg bg-[#EEF1FA] border border-indigo-100"
+            >
+              <button
+                type="button"
+                onClick={() => setLanguage('en')}
+                className={`px-2.5 py-1 rounded-md text-xs font-semibold transition-colors whitespace-nowrap ${
+                  language === 'en'
+                    ? 'bg-[#0B2545] text-white shadow-xs'
+                    : 'text-slate-600 hover:text-slate-900'
+                }`}
+              >
+                English
+              </button>
+              <button
+                type="button"
+                onClick={() => setLanguage('kn')}
+                className={`px-2.5 py-1 rounded-md text-xs font-semibold transition-colors whitespace-nowrap ${
+                  language === 'kn'
+                    ? 'bg-[#0B2545] text-white shadow-xs'
+                    : 'text-slate-600 hover:text-slate-900'
+                }`}
+              >
+                ಕನ್ನಡ
+              </button>
+            </div>
+
+            {/* Online / Offline Indicator */}
             <button
               type="button"
-              onClick={toggleOfflineMode}
-              className={`inline-flex items-center gap-2 px-3 py-1.5 rounded-md border text-xs font-medium transition-colors whitespace-nowrap shrink-0 ${
-                offlineState.offlineMode
-                  ? 'border-amber-300 dark:border-amber-700 bg-amber-50 dark:bg-amber-950/50 text-amber-800 dark:text-amber-300'
-                  : 'border-emerald-300 dark:border-emerald-700 bg-emerald-50 dark:bg-emerald-950/50 text-emerald-800 dark:text-emerald-300'
+              onClick={toggleOfflineStatus}
+              className={`inline-flex items-center gap-1.5 px-3 py-1.5 rounded-lg border text-xs font-medium transition-colors whitespace-nowrap ${
+                isOffline
+                  ? 'bg-amber-50 border-amber-200 text-amber-800 hover:bg-amber-100'
+                  : 'bg-emerald-50 border-emerald-200 text-emerald-800 hover:bg-emerald-100'
               }`}
             >
-              {offlineState.offlineMode ? (
+              {isOffline ? (
                 <>
-                  <WifiOff className="w-3.5 h-3.5" />
-                  <span>OFFLINE MODE</span>
+                  <WifiOff className="w-3.5 h-3.5 shrink-0" />
+                  <span className="hidden xl:inline">{t('header.offlineStatus')}</span>
+                  <span className="xl:hidden">Offline</span>
                 </>
               ) : (
                 <>
-                  <Wifi className="w-3.5 h-3.5" />
-                  <span>SYNC READY</span>
+                  <Wifi className="w-3.5 h-3.5 shrink-0" />
+                  <span className="hidden xl:inline">{t('header.onlineStatus')}</span>
+                  <span className="xl:hidden">Online</span>
                 </>
               )}
             </button>
 
+            {/* Notifications Button */}
             <button
               type="button"
-              onClick={toggleTheme}
-              aria-label={theme === 'dark' ? 'Switch to light mode' : 'Switch to dark mode'}
-              className="p-2 rounded-md border border-slate-200 dark:border-slate-700 text-slate-700 dark:text-slate-200 hover:bg-slate-100 dark:hover:bg-slate-800 transition-colors shrink-0"
+              onClick={() => navigate('/notifications')}
+              aria-label={t('header.notifications')}
+              className="relative p-2 rounded-lg border border-indigo-100 bg-white hover:bg-[#F3F4FA] text-slate-700 transition-colors"
             >
-              {theme === 'dark' ? <Sun className="w-4 h-4" /> : <Moon className="w-4 h-4" />}
+              <Bell className="w-4 h-4" />
+              {unreadNotificationCount > 0 && (
+                <span className="absolute -top-1 -right-1 w-4 h-4 rounded-full bg-[#2563EB] text-white text-[10px] font-mono font-bold flex items-center justify-center">
+                  {unreadNotificationCount}
+                </span>
+              )}
             </button>
 
-            <button
-              type="button"
-              onClick={() => navigate('/upload')}
-              className="hidden sm:inline-flex items-center gap-2 px-4 py-2 rounded-md bg-[#0F294A] hover:bg-[#1E3A8A] text-white text-xs font-semibold transition-colors whitespace-nowrap shrink-0"
+            {/* User Role Selector */}
+            <select
+              aria-label={t('header.role')}
+              value={activeProfile.role}
+              onChange={(e) => switchRole(e.target.value as UserRole)}
+              className="px-2.5 py-1.5 rounded-lg bg-white border border-indigo-100 text-xs font-semibold text-[#0B2545] focus:outline-none focus:ring-2 focus:ring-[#2563EB]"
             >
-              <UploadCloud className="w-3.5 h-3.5" />
-              <span>Upload Form</span>
-            </button>
+              <option value="Administrator">{t('role.Administrator')}</option>
+              <option value="Officer">{t('role.Officer')}</option>
+              <option value="Reviewer">{t('role.Reviewer')}</option>
+              <option value="Data Entry Operator">{t('role.Data Entry Operator')}</option>
+            </select>
           </div>
         </header>
 
-        {/* Page Viewport */}
-        <main className="flex-1 p-4 sm:p-6 lg:p-8 max-w-[1440px] w-full mx-auto">
+        {/* Main Viewport */}
+        <main className="flex-1 p-4 sm:p-6 lg:p-7 max-w-[1440px] w-full mx-auto">
           <Outlet />
         </main>
       </div>
 
-      {/* Floating SARKAR AI Assistant (hidden when on dedicated /assistant route) */}
-      {!location.pathname.startsWith('/assistant') && <SarkarAssistantWidget />}
-
-      {/* Toast Stack */}
+      {/* Toast Notifications */}
       {toasts.length > 0 && (
-        <div className="fixed top-20 right-5 z-50 flex flex-col gap-2 w-80 max-w-[calc(100vw-2.5rem)]">
-          {toasts.map((t) => (
+        <div className="fixed bottom-5 right-5 z-50 flex flex-col gap-2 w-80 max-w-[calc(100vw-2.5rem)] no-print">
+          {toasts.map((toast) => (
             <div
-              key={t.id}
-              className="bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-700 rounded-lg shadow-lg p-3.5 flex items-start gap-2.5"
+              key={toast.id}
+              className="bg-white border border-indigo-100 rounded-xl shadow-lg p-3.5 flex items-start gap-2.5"
             >
-              {t.tone === 'success' ? (
-                <CheckCircle2 className="w-4 h-4 text-emerald-600 dark:text-emerald-400 shrink-0 mt-0.5" />
-              ) : t.tone === 'warning' || t.tone === 'error' ? (
-                <AlertTriangle className="w-4 h-4 text-amber-600 dark:text-amber-400 shrink-0 mt-0.5" />
+              {toast.tone === 'success' ? (
+                <CheckCircle2 className="w-4 h-4 text-emerald-600 shrink-0 mt-0.5" />
+              ) : toast.tone === 'warning' || toast.tone === 'error' ? (
+                <AlertTriangle className="w-4 h-4 text-amber-600 shrink-0 mt-0.5" />
               ) : (
-                <Info className="w-4 h-4 text-blue-700 dark:text-blue-400 shrink-0 mt-0.5" />
+                <Info className="w-4 h-4 text-[#2563EB] shrink-0 mt-0.5" />
               )}
               <div className="flex-1 min-w-0">
-                <div className="text-xs font-semibold text-slate-900 dark:text-slate-100">
-                  {t.title}
-                </div>
-                <div className="text-xs text-slate-600 dark:text-slate-400 mt-0.5">
-                  {t.message}
-                </div>
+                <div className="text-xs font-semibold text-slate-900">{toast.title}</div>
+                <div className="text-xs text-slate-600 mt-0.5">{toast.message}</div>
               </div>
               <button
                 type="button"
-                onClick={() => dismissToast(t.id)}
-                aria-label="Dismiss notification"
-                className="text-slate-400 hover:text-slate-700 dark:hover:text-slate-200"
+                onClick={() => dismissToast(toast.id)}
+                aria-label={t('common.close')}
+                className="text-slate-400 hover:text-slate-700"
               >
                 <X className="w-3.5 h-3.5" />
               </button>

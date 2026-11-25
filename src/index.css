@@ -11,6 +11,12 @@
   body {
     font-family: var(--font-sans);
     font-feature-settings: "cv02", "cv03", "cv04", "cv11";
+    background-color: #F3F4FA;
+  }
+
+  html[lang="kn"] body {
+    line-height: 1.65;
+    letter-spacing: 0.005em;
   }
 
   h1, h2, h3, h4, .font-display {
@@ -30,21 +36,33 @@
   text-wrap: balance;
 }
 
-@keyframes scanline {
+@keyframes scanBeam {
   0% {
-    transform: translateY(-100%);
+    transform: translateY(0%);
+    opacity: 0.9;
+  }
+  50% {
+    transform: translateY(420px);
+    opacity: 1;
   }
   100% {
-    transform: translateY(400%);
+    transform: translateY(0%);
+    opacity: 0.9;
   }
 }
 
-.animate-scanline {
-  animation: scanline 2.2s cubic-bezier(0.4, 0, 0.2, 1) infinite;
+.animate-scan-beam {
+  animation: scanBeam 2.8s ease-in-out infinite;
 }
 
 @media (prefers-reduced-motion: reduce) {
-  .animate-scanline {
+  .animate-scan-beam {
     animation: none;
+  }
+}
+
+@media print {
+  .no-print {
+    display: none !important;
   }
 }

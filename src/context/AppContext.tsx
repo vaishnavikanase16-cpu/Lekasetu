@@ -1,33 +1,31 @@
 import React, { createContext, useContext, useEffect, useMemo, useState } from 'react';
 import { API_CONFIG } from '../config/apiConfig';
 import {
-  DEMO_OFFICERS,
-  DEPARTMENTS,
+  DEPARTMENT_WORKSPACES,
+  INITIAL_AUDIT_LOGS,
   INITIAL_DOCUMENTS,
-  INITIAL_HISTORY,
+  INITIAL_NOTIFICATIONS,
+  INITIAL_POLICE_COMPLAINTS,
+  OFFICES_BY_DEPARTMENT,
+  OFFICER_PROFILES,
 } from '../data/mockData';
-import { apiClient } from '../services/apiClient';
-import { computeConfidenceBand, documentService, UploadDocumentPayload } from '../services/documentService';
+import { IntakePayload, ocrService } from '../services/ocrService';
 import {
+  AppNotification,
+  AuditLogEntry,
   BackendMode,
-  Department,
-  DocumentRecord,
+  CorrectionEntry,
+  DepartmentConfig,
+  DepartmentId,
   ExtractedField,
-  HistoryEvent,
-  LanguageMode,
-  OfflineSystemState,
-  OfficerUser,
-  VerificationStatus,
+  LekhaDocument,
+  OfficerProfile,
+  PoliceComplaintRecord,
+  UserRole,
+  WorkflowStage,
 } from '../types';
 
-export interface ActiveProcessingJob {
-  jobId: string;
-  payload: UploadDocumentPayload;
-  startedAt: string;
-  completedDocId?: string;
-}
-
-export interface ToastNotice {
+export interface ToastItem {
   id: string;
   title: string;
   message: string;
@@ -35,73 +33,100 @@ export interface ToastNotice {
 }
 
 interface AppContextValue {
-  user: OfficerUser | null;
-  loginAsOfficer: (officerId: string) => void;
-  loginWithCustomEmail: (email: string, name: string, designation: string) => void;
-  logout: () => void;
-  theme: 'light' | 'dark';
-  toggleTheme: () => void;
+  activeProfile: OfficerProfile;
+  switchRole: (role: UserRole) => void;
+  selectedDepartment: DepartmentId;
+  setSelectedDepartment: (dept: DepartmentId) => void;
+  selectedOffice: string;
+  setSelectedOffice: (office: string) => void;
+  availableOffices: string[];
+  isOffline: boolean;
+  toggleOfflineStatus: () => void;
   backendMode: BackendMode;
   apiBaseUrl: string;
   updateBackendConfig: (url: string, mode: BackendMode) => void;
-  offlineState: OfflineSystemState;
-  toggleOfflineMode: () => void;
-  syncOfflineQueue: () => Promise<void>;
-  departments: Department[];
-  documents: DocumentRecord[];
-  history: HistoryEvent[];
-  selectedDepartmentFilter: string;
-  setSelectedDepartmentFilter: (deptId: string) => void;
-  activeProcessingJob: ActiveProcessingJob | null;
-  startProcessingJob: (payload: UploadDocumentPayload) => ActiveProcessingJob;
-  finalizeProcessingJob: (job: ActiveProcessingJob) => Promise<DocumentRecord>;
-  updateDocumentRecord: (
+  departments: DepartmentConfig[];
+  documents: LekhaDocument[];
+  policeComplaints: PoliceComplaintRecord[];
+  notifications: AppNotification[];
+  unreadNotificationCount: number;
+  markNotificationRead: (id: string) => void;
+  markAllNotificationsRead: () => void;
+  auditLogs: AuditLogEntry[];
+  pendingIntake: IntakePayload | null;
+  setPendingIntake: (payload: IntakePayload | null) => void;
+  runScannerTransformation: (payload: IntakePayload) => Promise<LekhaDocument>;
+  saveFieldCorrections: (
     docId: string,
     updatedFields: ExtractedField[],
-    status: VerificationStatus,
-    actionNote?: string
-  ) => Promise<void>;
-  addHistoryEvent: (event: Omit<HistoryEvent, 'id' | 'timestamp'>) => void;
-  defaultLanguage: LanguageMode;
-  setDefaultLanguage: (lang: LanguageMode) => void;
-  confidenceThreshold: number;
-  setConfidenceThreshold: (val: number) => void;
-  assistantOpen: boolean;
-  setAssistantOpen: (open: boolean) => void;
-  assistantDocId: string;
-  setAssistantDocId: (id: string) => void;
-  openAssistantForDoc: (docId: string) => void;
-  toasts: ToastNotice[];
-  notify: (title: string, message: string, tone?: ToastNotice['tone']) => void;
+    recognizedText: string
+  ) => void;
+  verifyDocument: (docId: string, updatedFields?: ExtractedField[]) => void;
+  returnDocumentForCorrection: (docId: string, reason: string) => void;
+  advanceWorkflowStage: (docId: string, nextStage: WorkflowStage) => void;
+  assignDocumentOfficer: (docId: string, officerName: string) => void;
+  deleteDocument: (docId: string) => boolean;
+  addPoliceComplaint: (
+    complaint: Omit<PoliceComplaintRecord, 'id' | 'submittedAt' | 'createdBy'>
+  ) => PoliceComplaintRecord;
+  resetDemoData: () => void;
+  canVerify: boolean;
+  canDelete: boolean;
+  canExport: boolean;
+  toasts: ToastItem[];
+  notify: (title: string, message: string, tone?: ToastItem['tone']) => void;
   dismissToast: (id: string) => void;
+  addAuditEvent: (entry: Omit<AuditLogEntry, 'id' | 'timestamp'>) => void;
 }
 
 const AppContext = createContext<AppContextValue | null>(null);
 
 const STORAGE_KEYS = {
-  THEME: 'sarkar_ai_theme',
-  DOCS: 'sarkar_ai_documents_v1',
-  HISTORY: 'sarkar_ai_history_v1',
-  BACKEND_URL: 'sarkar_ai_backend_url',
-  BACKEND_MODE: 'sarkar_ai_backend_mode',
-  OFFLINE_MODE: 'sarkar_ai_offline_mode',
-  USER: 'sarkar_ai_user',
+  DOCS: 'lekhasetu_documents_v2',
+  COMPLAINTS: 'lekhasetu_complaints_v2',
+  NOTIFS: 'lekhasetu_notifications_v2',
+  AUDIT: 'lekhasetu_audit_v2',
+  ROLE: 'lekhasetu_role_v2',
+  DEPT: 'lekhasetu_dept_v2',
+  OFFLINE: 'lekhasetu_offline_v2',
+  API_URL: 'lekhasetu_api_url_v2',
+  BACKEND_MODE: 'lekhasetu_backend_mode_v2',
 };
 
 export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children }) => {
-  const [user, setUser] = useState<OfficerUser | null>(() => {
-    try {
-      const saved = localStorage.getItem(STORAGE_KEYS.USER);
-      if (saved === 'null') return null;
-      return saved ? JSON.parse(saved) : DEMO_OFFICERS[0];
-    } catch {
-      return DEMO_OFFICERS[0];
-    }
+  const [role, setRole] = useState<UserRole>(() => {
+    const saved = localStorage.getItem(STORAGE_KEYS.ROLE) as UserRole | null;
+    return saved && ['Administrator', 'Officer', 'Data Entry Operator', 'Reviewer'].includes(saved)
+      ? saved
+      : 'Administrator';
   });
 
-  const [theme, setTheme] = useState<'light' | 'dark'>(() => {
-    const saved = localStorage.getItem(STORAGE_KEYS.THEME);
-    return saved === 'dark' ? 'dark' : 'light';
+  const activeProfile = useMemo(
+    () => OFFICER_PROFILES.find((p) => p.role === role) || OFFICER_PROFILES[0],
+    [role]
+  );
+
+  const [selectedDepartment, setSelectedDepartmentState] = useState<DepartmentId>(() => {
+    const saved = localStorage.getItem(STORAGE_KEYS.DEPT) as DepartmentId | null;
+    return saved || 'all';
+  });
+
+  const availableOffices = useMemo(
+    () => OFFICES_BY_DEPARTMENT[selectedDepartment] || OFFICES_BY_DEPARTMENT.all,
+    [selectedDepartment]
+  );
+
+  const [selectedOffice, setSelectedOffice] = useState<string>(availableOffices[0]);
+
+  useEffect(() => {
+    if (!availableOffices.includes(selectedOffice)) {
+      setSelectedOffice(availableOffices[0]);
+    }
+  }, [availableOffices, selectedOffice]);
+
+  const [isOffline, setIsOffline] = useState<boolean>(() => {
+    const saved = localStorage.getItem(STORAGE_KEYS.OFFLINE);
+    return saved === null ? true : saved === 'true';
   });
 
   const [backendMode, setBackendMode] = useState<BackendMode>(() => {
@@ -109,16 +134,11 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
     return saved === 'fastapi' ? 'fastapi' : API_CONFIG.DEFAULT_MODE;
   });
 
-  const [apiBaseUrl, setApiBaseUrl] = useState<string>(() => {
-    return localStorage.getItem(STORAGE_KEYS.BACKEND_URL) || API_CONFIG.DEFAULT_BASE_URL;
-  });
+  const [apiBaseUrl, setApiBaseUrl] = useState<string>(
+    () => localStorage.getItem(STORAGE_KEYS.API_URL) || API_CONFIG.DEFAULT_BASE_URL
+  );
 
-  const [offlineMode, setOfflineMode] = useState<boolean>(() => {
-    const saved = localStorage.getItem(STORAGE_KEYS.OFFLINE_MODE);
-    return saved === null ? true : saved === 'true';
-  });
-
-  const [documents, setDocuments] = useState<DocumentRecord[]>(() => {
+  const [documents, setDocuments] = useState<LekhaDocument[]>(() => {
     try {
       const saved = localStorage.getItem(STORAGE_KEYS.DOCS);
       return saved ? JSON.parse(saved) : INITIAL_DOCUMENTS;
@@ -127,69 +147,68 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
     }
   });
 
-  const [history, setHistory] = useState<HistoryEvent[]>(() => {
+  const [policeComplaints, setPoliceComplaints] = useState<PoliceComplaintRecord[]>(() => {
     try {
-      const saved = localStorage.getItem(STORAGE_KEYS.HISTORY);
-      return saved ? JSON.parse(saved) : INITIAL_HISTORY;
+      const saved = localStorage.getItem(STORAGE_KEYS.COMPLAINTS);
+      return saved ? JSON.parse(saved) : INITIAL_POLICE_COMPLAINTS;
     } catch {
-      return INITIAL_HISTORY;
+      return INITIAL_POLICE_COMPLAINTS;
     }
   });
 
-  const [selectedDepartmentFilter, setSelectedDepartmentFilter] = useState<string>('all');
-  const [activeProcessingJob, setActiveProcessingJob] = useState<ActiveProcessingJob | null>(null);
-  const [defaultLanguage, setDefaultLanguage] = useState<LanguageMode>('Automatic');
-  const [confidenceThreshold, setConfidenceThreshold] = useState<number>(85);
-  const [assistantOpen, setAssistantOpen] = useState<boolean>(false);
-  const [assistantDocId, setAssistantDocId] = useState<string>(INITIAL_DOCUMENTS[0].id);
-  const [isSyncing, setIsSyncing] = useState<boolean>(false);
-  const [lastSyncedAt, setLastSyncedAt] = useState<string>('2026-11-24T08:30:00');
-  const [toasts, setToasts] = useState<ToastNotice[]>([]);
-
-  useEffect(() => {
-    const root = document.documentElement;
-    if (theme === 'dark') {
-      root.classList.add('dark');
-    } else {
-      root.classList.remove('dark');
+  const [notifications, setNotifications] = useState<AppNotification[]>(() => {
+    try {
+      const saved = localStorage.getItem(STORAGE_KEYS.NOTIFS);
+      return saved ? JSON.parse(saved) : INITIAL_NOTIFICATIONS;
+    } catch {
+      return INITIAL_NOTIFICATIONS;
     }
-    localStorage.setItem(STORAGE_KEYS.THEME, theme);
-  }, [theme]);
+  });
+
+  const [auditLogs, setAuditLogs] = useState<AuditLogEntry[]>(() => {
+    try {
+      const saved = localStorage.getItem(STORAGE_KEYS.AUDIT);
+      return saved ? JSON.parse(saved) : INITIAL_AUDIT_LOGS;
+    } catch {
+      return INITIAL_AUDIT_LOGS;
+    }
+  });
+
+  const [pendingIntake, setPendingIntake] = useState<IntakePayload | null>(null);
+  const [toasts, setToasts] = useState<ToastItem[]>([]);
 
   useEffect(() => {
-    apiClient.configure(apiBaseUrl, backendMode);
-    localStorage.setItem(STORAGE_KEYS.BACKEND_URL, apiBaseUrl);
+    localStorage.setItem(STORAGE_KEYS.ROLE, role);
+  }, [role]);
+
+  useEffect(() => {
+    localStorage.setItem(STORAGE_KEYS.DEPT, selectedDepartment);
+  }, [selectedDepartment]);
+
+  useEffect(() => {
+    localStorage.setItem(STORAGE_KEYS.OFFLINE, String(isOffline));
+  }, [isOffline]);
+
+  useEffect(() => {
+    localStorage.setItem(STORAGE_KEYS.API_URL, apiBaseUrl);
     localStorage.setItem(STORAGE_KEYS.BACKEND_MODE, backendMode);
   }, [apiBaseUrl, backendMode]);
 
   useEffect(() => {
-    localStorage.setItem(STORAGE_KEYS.OFFLINE_MODE, String(offlineMode));
-  }, [offlineMode]);
-
-  useEffect(() => {
     try {
       localStorage.setItem(STORAGE_KEYS.DOCS, JSON.stringify(documents));
+      localStorage.setItem(STORAGE_KEYS.COMPLAINTS, JSON.stringify(policeComplaints));
+      localStorage.setItem(STORAGE_KEYS.NOTIFS, JSON.stringify(notifications));
+      localStorage.setItem(STORAGE_KEYS.AUDIT, JSON.stringify(auditLogs));
     } catch {
-      // Ignore quota exceeded if large custom uploads are stored in memory
+      // Ignore storage quota issues
     }
-  }, [documents]);
-
-  useEffect(() => {
-    try {
-      localStorage.setItem(STORAGE_KEYS.HISTORY, JSON.stringify(history));
-    } catch {
-      // Ignore quota exceeded
-    }
-  }, [history]);
-
-  useEffect(() => {
-    localStorage.setItem(STORAGE_KEYS.USER, user ? JSON.stringify(user) : 'null');
-  }, [user]);
+  }, [documents, policeComplaints, notifications, auditLogs]);
 
   const notify = (
     title: string,
     message: string,
-    tone: ToastNotice['tone'] = 'info'
+    tone: ToastItem['tone'] = 'info'
   ) => {
     const id = `toast-${Date.now()}-${Math.random().toString(36).slice(2, 6)}`;
     setToasts((prev) => [...prev, { id, title, message, tone }]);
@@ -202,281 +221,436 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
     setToasts((prev) => prev.filter((t) => t.id !== id));
   };
 
-  const toggleTheme = () => {
-    setTheme((prev) => (prev === 'light' ? 'dark' : 'light'));
+  const addAuditEvent = (entry: Omit<AuditLogEntry, 'id' | 'timestamp'>) => {
+    setAuditLogs((prev) => [
+      {
+        ...entry,
+        id: `aud-${Date.now()}-${Math.random().toString(36).slice(2, 5)}`,
+        timestamp: new Date().toISOString(),
+      },
+      ...prev,
+    ]);
   };
 
-  const updateBackendConfig = (url: string, mode: BackendMode) => {
-    setApiBaseUrl(url);
-    setBackendMode(mode);
-    notify(
-      mode === 'fastapi' ? 'FastAPI Mode Enabled' : 'Demo Simulation Mode Enabled',
-      mode === 'fastapi'
-        ? `API requests routed to ${url}`
-        : 'Using offline local simulation dataset and demo OCR extractor.',
-      'info'
-    );
-  };
-
-  const loginAsOfficer = (officerId: string) => {
-    const found = DEMO_OFFICERS.find((o) => o.id === officerId) || DEMO_OFFICERS[0];
-    setUser(found);
-    notify('Officer Authenticated', `Signed in as ${found.name}`, 'success');
-  };
-
-  const loginWithCustomEmail = (email: string, name: string, designation: string) => {
-    const customUser: OfficerUser = {
-      id: `off-${Date.now()}`,
-      name: name || 'Government Officer',
-      designation: designation || 'Digitization Officer',
-      department: 'Revenue Department',
-      district: 'Bengaluru Urban',
-      employeeCode: 'KA-GOV-2026-0918',
-      email,
-      avatarUrl: DEMO_OFFICERS[0].avatarUrl,
-    };
-    setUser(customUser);
-    notify('Officer Authenticated', `Signed in as ${customUser.name}`, 'success');
-  };
-
-  const logout = () => {
-    setUser(null);
-    notify('Session Closed', 'Signed out of SARKAR AI workstation.', 'info');
-  };
-
-  const addHistoryEvent = (event: Omit<HistoryEvent, 'id' | 'timestamp'>) => {
-    const fullEvent: HistoryEvent = {
-      ...event,
-      id: `hist-${Date.now()}-${Math.random().toString(36).slice(2, 6)}`,
-      timestamp: new Date().toISOString(),
-    };
-    setHistory((prev) => [fullEvent, ...prev]);
-  };
-
-  const startProcessingJob = (payload: UploadDocumentPayload): ActiveProcessingJob => {
-    const job: ActiveProcessingJob = {
-      jobId: `job-${Date.now()}`,
-      payload,
-      startedAt: new Date().toISOString(),
-    };
-    setActiveProcessingJob(job);
-    return job;
-  };
-
-  const finalizeProcessingJob = async (
-    job: ActiveProcessingJob
-  ): Promise<DocumentRecord> => {
-    const result = await documentService.uploadAndProcessDocument(job.payload);
-    const createdDoc = result.document;
-
-    setDocuments((prev) => [createdDoc, ...prev]);
-    setAssistantDocId(createdDoc.id);
-    setActiveProcessingJob((prev) =>
-      prev && prev.jobId === job.jobId ? { ...prev, completedDocId: createdDoc.id } : prev
-    );
-
-    addHistoryEvent({
-      documentId: createdDoc.id,
-      applicationNumber: createdDoc.applicationNumber,
-      departmentName: createdDoc.departmentName,
-      action: 'Uploaded',
-      actor: user?.name || 'District Officer',
-      details: `Uploaded ${createdDoc.fileName} (${createdDoc.language})`,
-      mode: result.mode === 'fastapi' ? 'FastAPI Live' : 'Demo Simulation',
-    });
-
-    addHistoryEvent({
-      documentId: createdDoc.id,
-      applicationNumber: createdDoc.applicationNumber,
-      departmentName: createdDoc.departmentName,
-      action: 'OCR Processed',
-      actor: result.mode === 'fastapi' ? 'FastAPI PaddleOCR + RAG' : 'Local OCR Engine (Demo)',
-      details: `Extracted ${createdDoc.fields.length} fields at ${createdDoc.overallConfidence}% average confidence.`,
-      mode: result.mode === 'fastapi' ? 'FastAPI Live' : 'Demo Simulation',
-    });
-
-    return createdDoc;
-  };
-
-  const updateDocumentRecord = async (
-    docId: string,
-    updatedFields: ExtractedField[],
-    status: VerificationStatus,
-    actionNote?: string
+  const pushNotification = (
+    notif: Omit<AppNotification, 'id' | 'timestamp' | 'read'>
   ) => {
-    await documentService.saveDocumentChanges(docId, updatedFields, status, documents);
+    setNotifications((prev) => [
+      {
+        ...notif,
+        id: `notif-${Date.now()}-${Math.random().toString(36).slice(2, 5)}`,
+        timestamp: new Date().toISOString(),
+        read: false,
+      },
+      ...prev,
+    ]);
+  };
 
-    const avgConf = Math.round(
-      updatedFields.reduce((sum, f) => sum + f.confidence, 0) /
-        Math.max(updatedFields.length, 1)
-    );
-
-    const getVal = (key: string, fallback: string) =>
-      updatedFields.find((f) => f.key === key)?.value ?? fallback;
-
-    let updatedDocRef: DocumentRecord | undefined;
-
-    setDocuments((prev) =>
-      prev.map((doc) => {
-        if (doc.id !== docId) return doc;
-        const nextDoc: DocumentRecord = {
-          ...doc,
-          fields: updatedFields,
-          status,
-          overallConfidence: status === 'Verified' ? Math.max(avgConf, 92) : avgConf,
-          confidenceBand: computeConfidenceBand(
-            status === 'Verified' ? Math.max(avgConf, 92) : avgConf
-          ),
-          applicantName: getVal('applicantName', doc.applicantName),
-          fatherName: getVal('fatherName', doc.fatherName),
-          address: getVal('address', doc.address),
-          village: getVal('village', doc.village),
-          district: getVal('district', doc.district),
-          applicationNumber: getVal('applicationNumber', doc.applicationNumber),
-          formDate: getVal('formDate', doc.formDate),
-        };
-        updatedDocRef = nextDoc;
-        return nextDoc;
-      })
-    );
-
-    if (updatedDocRef) {
-      addHistoryEvent({
-        documentId: updatedDocRef.id,
-        applicationNumber: updatedDocRef.applicationNumber,
-        departmentName: updatedDocRef.departmentName,
-        action: status === 'Verified' ? 'Verified' : 'Field Edited',
-        actor: user?.name || 'District Officer',
-        details:
-          actionNote ||
-          (status === 'Verified'
-            ? 'Officer verified extracted data and committed record to local store.'
-            : 'Updated extracted field values during review.'),
-        mode: backendMode === 'fastapi' ? 'FastAPI Live' : 'Demo Simulation',
-      });
+  const switchRole = (nextRole: UserRole) => {
+    setRole(nextRole);
+    const prof = OFFICER_PROFILES.find((p) => p.role === nextRole);
+    if (prof) {
+      setSelectedDepartmentState(prof.departmentId);
+      notify('Role Switched', `${prof.name} (${nextRole})`, 'info');
     }
   };
 
-  const toggleOfflineMode = () => {
-    setOfflineMode((prev) => {
+  const setSelectedDepartment = (dept: DepartmentId) => {
+    setSelectedDepartmentState(dept);
+  };
+
+  const toggleOfflineStatus = () => {
+    setIsOffline((prev) => {
       const next = !prev;
       notify(
-        next ? 'Offline Mode Active' : 'Central Sync Link Ready',
+        next ? 'Offline – Local Processing Active' : 'Online – Connection Available',
         next
-          ? 'Workstation isolated: using local OCR engine, local SQLite cache & quantized AI model.'
-          : 'Network link enabled: queued records ready for central district synchronization.',
+          ? 'Local SQLite, document store, and OCR/RAG modules active.'
+          : 'Network link available for optional central synchronization.',
         'info'
       );
       return next;
     });
   };
 
-  const syncOfflineQueue = async () => {
-    const unsyncedCount = documents.filter((d) => !d.syncedToCentral).length;
-    if (unsyncedCount === 0) {
-      notify('All Records Synchronized', 'No pending offline records in local queue.', 'success');
-      return;
-    }
-
-    setIsSyncing(true);
-    await new Promise((r) => setTimeout(r, 900));
-
-    setDocuments((prev) => prev.map((d) => ({ ...d, syncedToCentral: true })));
-    setLastSyncedAt(new Date().toISOString());
-    setIsSyncing(false);
-
-    addHistoryEvent({
-      documentId: documents[0]?.id || 'system',
-      applicationNumber: 'BATCH-SYNC',
-      departmentName: 'All Departments',
-      action: 'Synced',
-      actor: 'Offline Sync Daemon',
-      details: `Synchronized ${unsyncedCount} locally processed records to District Data Centre.`,
-      mode: backendMode === 'fastapi' ? 'FastAPI Live' : 'Demo Simulation',
-    });
-
+  const updateBackendConfig = (url: string, mode: BackendMode) => {
+    setApiBaseUrl(url);
+    setBackendMode(mode);
     notify(
-      'Synchronization Complete',
-      `${unsyncedCount} offline records synced to district registry.`,
-      'success'
+      mode === 'fastapi' ? 'FastAPI Backend Enabled' : 'Illustrative Demo Mode Enabled',
+      mode === 'fastapi' ? `Endpoint set to ${url}` : 'Using simulated local OCR & SQLite store.',
+      'info'
     );
   };
 
-  const openAssistantForDoc = (docId: string) => {
-    setAssistantDocId(docId);
-    setAssistantOpen(true);
+  const runScannerTransformation = async (
+    payload: IntakePayload
+  ): Promise<LekhaDocument> => {
+    const newDoc = await ocrService.runDocumentTransformation(
+      payload,
+      backendMode,
+      apiBaseUrl
+    );
+    setDocuments((prev) => [newDoc, ...prev]);
+
+    addAuditEvent({
+      actor: activeProfile.name,
+      role: activeProfile.role,
+      action: 'Created',
+      targetRef: newDoc.referenceNumber,
+      departmentId: newDoc.departmentId,
+      details: `Digitized ${newDoc.fileName} (${newDoc.inputLanguage}) via ${newDoc.ocrSource}.`,
+    });
+
+    pushNotification({
+      type: 'new_document',
+      titleKey: 'New Document Received',
+      message: `${newDoc.referenceNumber} (${newDoc.category}) digitized and queued for verification.`,
+      documentId: newDoc.id,
+      departmentId: newDoc.departmentId,
+    });
+
+    return newDoc;
   };
 
-  const offlineState: OfflineSystemState = useMemo(() => {
-    const pendingSyncCount = documents.filter((d) => !d.syncedToCentral).length;
-    return {
-      offlineMode,
-      ocrEngine: {
-        name: 'PaddleOCR + Indic-TrOCR',
-        status: 'Ready (Local)',
-        languages: ['Kannada (ಕನ್ನಡ)', 'English'],
-        version: 'Local Edge Engine',
-      },
-      localDatabase: {
-        engine: 'SQLite WAL + IndexedDB Cache',
-        status: isSyncing ? 'Syncing' : 'Connected',
-        cachedRecords: documents.length,
-        storageUsedMb: Number((18.4 + documents.length * 1.35).toFixed(1)),
-      },
-      localAiModel: {
-        name: 'Indic-Llama-3-8B (Q4_K_M)',
-        quantization: '4-bit Local Inference',
-        status: 'Loaded in RAM',
-      },
-      syncStatus: {
-        pendingSyncCount,
-        lastSyncedAt,
-        state: isSyncing
-          ? 'Syncing'
-          : pendingSyncCount > 0
-            ? 'Local Queue Active'
-            : 'Synchronized',
-      },
+  const saveFieldCorrections = (
+    docId: string,
+    updatedFields: ExtractedField[],
+    recognizedText: string
+  ) => {
+    const now = new Date().toISOString();
+    setDocuments((prev) =>
+      prev.map((doc) => {
+        if (doc.id !== docId) return doc;
+
+        const changes: CorrectionEntry[] = [];
+        updatedFields.forEach((nf) => {
+          const old = doc.fields.find((of) => of.key === nf.key);
+          if (old && old.value !== nf.value) {
+            changes.push({
+              id: `corr-${Date.now()}-${nf.key}`,
+              timestamp: now,
+              officerName: activeProfile.name,
+              fieldKey: nf.key,
+              previousValue: old.value,
+              updatedValue: nf.value,
+              actionType: 'Edited',
+            });
+            addAuditEvent({
+              actor: activeProfile.name,
+              role: activeProfile.role,
+              action: 'Modified',
+              targetRef: doc.referenceNumber,
+              departmentId: doc.departmentId,
+              previousValue: old.value || '[Blank]',
+              updatedValue: nf.value || '[Blank]',
+              details: `Corrected field "${nf.key}" in Verification Centre.`,
+            });
+          }
+        });
+
+        const getVal = (k: string, fb: string) =>
+          updatedFields.find((f) => f.key === k)?.value ?? fb;
+
+        const hasMissingFields = updatedFields.some(
+          (f) => f.required && (!f.value.trim() || f.reviewState === 'MissingOrInvalid')
+        );
+        const needsReviewCount = updatedFields.filter(
+          (f) => f.reviewState !== 'HighConfidence'
+        ).length;
+
+        return {
+          ...doc,
+          fields: updatedFields,
+          recognizedText,
+          applicantName: getVal('applicantName', doc.applicantName),
+          address: getVal('address', doc.address),
+          village: getVal('village', doc.village),
+          district: getVal('district', doc.district),
+          contactNumber: getVal('contactNumber', doc.contactNumber),
+          hasMissingFields,
+          needsReviewCount,
+          updatedAt: now,
+          correctionHistory: [...changes, ...doc.correctionHistory],
+        };
+      })
+    );
+  };
+
+  const canVerify =
+    role === 'Administrator' || role === 'Officer' || role === 'Reviewer';
+  const canDelete = role === 'Administrator';
+  const canExport =
+    role === 'Administrator' || role === 'Officer' || role === 'Reviewer';
+
+  const verifyDocument = (docId: string, updatedFields?: ExtractedField[]) => {
+    if (!canVerify) {
+      notify('Permission Restricted', 'Data Entry Operators cannot approve official records.', 'warning');
+      return;
+    }
+
+    const now = new Date().toISOString();
+    setDocuments((prev) =>
+      prev.map((doc) => {
+        if (doc.id !== docId) return doc;
+        const fieldsToSave = (updatedFields || doc.fields).map((f) => ({
+          ...f,
+          reviewState: f.value.trim() ? ('HighConfidence' as const) : f.reviewState,
+        }));
+
+        const hasMissing = fieldsToSave.some((f) => f.required && !f.value.trim());
+
+        const entry: CorrectionEntry = {
+          id: `corr-ver-${Date.now()}`,
+          timestamp: now,
+          officerName: activeProfile.name,
+          fieldKey: 'status',
+          previousValue: doc.workflowStage,
+          updatedValue: 'Verified',
+          actionType: 'Verified',
+          note: 'Officer verified extracted data against original handwriting.',
+        };
+
+        addAuditEvent({
+          actor: activeProfile.name,
+          role: activeProfile.role,
+          action: 'Verified',
+          targetRef: doc.referenceNumber,
+          departmentId: doc.departmentId,
+          previousValue: doc.workflowStage,
+          updatedValue: 'Verified',
+          details: `Verified and approved record ${doc.referenceNumber}.`,
+        });
+
+        pushNotification({
+          type: 'task_completed',
+          titleKey: 'Document Verified',
+          message: `${doc.referenceNumber} approved by ${activeProfile.name}.`,
+          documentId: doc.id,
+          departmentId: doc.departmentId,
+        });
+
+        return {
+          ...doc,
+          fields: fieldsToSave,
+          workflowStage: 'Verified',
+          hasMissingFields: hasMissing,
+          needsReviewCount: 0,
+          updatedAt: now,
+          correctionHistory: [entry, ...doc.correctionHistory],
+        };
+      })
+    );
+  };
+
+  const returnDocumentForCorrection = (docId: string, reason: string) => {
+    const now = new Date().toISOString();
+    setDocuments((prev) =>
+      prev.map((doc) => {
+        if (doc.id !== docId) return doc;
+        const entry: CorrectionEntry = {
+          id: `corr-ret-${Date.now()}`,
+          timestamp: now,
+          officerName: activeProfile.name,
+          fieldKey: 'workflowStage',
+          previousValue: doc.workflowStage,
+          updatedValue: 'Received',
+          actionType: 'Returned',
+          note: reason || 'Returned for handwriting re-verification.',
+        };
+
+        addAuditEvent({
+          actor: activeProfile.name,
+          role: activeProfile.role,
+          action: 'Returned',
+          targetRef: doc.referenceNumber,
+          departmentId: doc.departmentId,
+          previousValue: doc.workflowStage,
+          updatedValue: 'Received',
+          details: reason || 'Returned for correction.',
+        });
+
+        pushNotification({
+          type: 'document_returned',
+          titleKey: 'Document Returned',
+          message: `${doc.referenceNumber} returned for correction: ${reason}`,
+          documentId: doc.id,
+          departmentId: doc.departmentId,
+        });
+
+        return {
+          ...doc,
+          workflowStage: 'Received',
+          updatedAt: now,
+          correctionHistory: [entry, ...doc.correctionHistory],
+        };
+      })
+    );
+  };
+
+  const advanceWorkflowStage = (docId: string, nextStage: WorkflowStage) => {
+    const now = new Date().toISOString();
+    setDocuments((prev) =>
+      prev.map((doc) => {
+        if (doc.id !== docId) return doc;
+        addAuditEvent({
+          actor: activeProfile.name,
+          role: activeProfile.role,
+          action: 'Status Changed',
+          targetRef: doc.referenceNumber,
+          departmentId: doc.departmentId,
+          previousValue: doc.workflowStage,
+          updatedValue: nextStage,
+          details: `Workflow transitioned from ${doc.workflowStage} to ${nextStage}.`,
+        });
+        return { ...doc, workflowStage: nextStage, updatedAt: now };
+      })
+    );
+  };
+
+  const assignDocumentOfficer = (docId: string, officerName: string) => {
+    const now = new Date().toISOString();
+    setDocuments((prev) =>
+      prev.map((doc) => {
+        if (doc.id !== docId) return doc;
+        addAuditEvent({
+          actor: activeProfile.name,
+          role: activeProfile.role,
+          action: 'Modified',
+          targetRef: doc.referenceNumber,
+          departmentId: doc.departmentId,
+          previousValue: doc.assignedTo,
+          updatedValue: officerName,
+          details: `Assigned case to ${officerName}.`,
+        });
+        pushNotification({
+          type: 'task_assigned',
+          titleKey: 'Task Assigned',
+          message: `${doc.referenceNumber} assigned to ${officerName}.`,
+          documentId: doc.id,
+          departmentId: doc.departmentId,
+        });
+        return {
+          ...doc,
+          assignedTo: officerName,
+          workflowStage:
+            doc.workflowStage === 'Verified' ? 'Assigned' : doc.workflowStage,
+          updatedAt: now,
+        };
+      })
+    );
+  };
+
+  const deleteDocument = (docId: string): boolean => {
+    if (!canDelete) {
+      notify('Permission Restricted', 'Only Administrators can delete local records.', 'warning');
+      return false;
+    }
+    const target = documents.find((d) => d.id === docId);
+    if (!target) return false;
+    setDocuments((prev) => prev.filter((d) => d.id !== docId));
+    addAuditEvent({
+      actor: activeProfile.name,
+      role: activeProfile.role,
+      action: 'Deleted',
+      targetRef: target.referenceNumber,
+      departmentId: target.departmentId,
+      details: `Deleted record ${target.referenceNumber} (${target.category}).`,
+    });
+    return true;
+  };
+
+  const addPoliceComplaint = (
+    complaint: Omit<PoliceComplaintRecord, 'id' | 'submittedAt' | 'createdBy'>
+  ): PoliceComplaintRecord => {
+    const record: PoliceComplaintRecord = {
+      ...complaint,
+      id: `pc-${Date.now()}`,
+      submittedAt: new Date().toISOString(),
+      createdBy: activeProfile.name,
     };
-  }, [offlineMode, isSyncing, documents, lastSyncedAt]);
+    setPoliceComplaints((prev) => [record, ...prev]);
+
+    addAuditEvent({
+      actor: activeProfile.name,
+      role: activeProfile.role,
+      action: 'Created',
+      targetRef: record.internalRefNumber,
+      departmentId: 'police',
+      details: `Created internal police complaint record (${record.inputMode}) at ${record.policeStation}.`,
+    });
+
+    pushNotification({
+      type: 'new_document',
+      titleKey: 'Internal Complaint Logged',
+      message: `${record.internalRefNumber} logged at ${record.policeStation}.`,
+      departmentId: 'police',
+    });
+
+    return record;
+  };
+
+  const markNotificationRead = (id: string) => {
+    setNotifications((prev) =>
+      prev.map((n) => (n.id === id ? { ...n, read: true } : n))
+    );
+  };
+
+  const markAllNotificationsRead = () => {
+    setNotifications((prev) => prev.map((n) => ({ ...n, read: true })));
+  };
+
+  const resetDemoData = () => {
+    setDocuments(INITIAL_DOCUMENTS);
+    setPoliceComplaints(INITIAL_POLICE_COMPLAINTS);
+    setNotifications(INITIAL_NOTIFICATIONS);
+    setAuditLogs(INITIAL_AUDIT_LOGS);
+    notify('Demo Data Restored', 'Reset to illustrative Karnataka Government sample records.', 'info');
+  };
+
+  const unreadNotificationCount = notifications.filter((n) => !n.read).length;
 
   return (
     <AppContext.Provider
       value={{
-        user,
-        loginAsOfficer,
-        loginWithCustomEmail,
-        logout,
-        theme,
-        toggleTheme,
+        activeProfile,
+        switchRole,
+        selectedDepartment,
+        setSelectedDepartment,
+        selectedOffice,
+        setSelectedOffice,
+        availableOffices,
+        isOffline,
+        toggleOfflineStatus,
         backendMode,
         apiBaseUrl,
         updateBackendConfig,
-        offlineState,
-        toggleOfflineMode,
-        syncOfflineQueue,
-        departments: DEPARTMENTS,
+        departments: DEPARTMENT_WORKSPACES,
         documents,
-        history,
-        selectedDepartmentFilter,
-        setSelectedDepartmentFilter,
-        activeProcessingJob,
-        startProcessingJob,
-        finalizeProcessingJob,
-        updateDocumentRecord,
-        addHistoryEvent,
-        defaultLanguage,
-        setDefaultLanguage,
-        confidenceThreshold,
-        setConfidenceThreshold,
-        assistantOpen,
-        setAssistantOpen,
-        assistantDocId,
-        setAssistantDocId,
-        openAssistantForDoc,
+        policeComplaints,
+        notifications,
+        unreadNotificationCount,
+        markNotificationRead,
+        markAllNotificationsRead,
+        auditLogs,
+        pendingIntake,
+        setPendingIntake,
+        runScannerTransformation,
+        saveFieldCorrections,
+        verifyDocument,
+        returnDocumentForCorrection,
+        advanceWorkflowStage,
+        assignDocumentOfficer,
+        deleteDocument,
+        addPoliceComplaint,
+        resetDemoData,
+        canVerify,
+        canDelete,
+        canExport,
         toasts,
         notify,
         dismissToast,
+        addAuditEvent,
       }}
     >
       {children}

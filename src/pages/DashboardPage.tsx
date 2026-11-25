@@ -1,478 +1,458 @@
-import React, { useEffect, useState } from 'react';
+import React, { useMemo, useState } from 'react';
 import { useNavigate } from 'react-router-dom';
 import {
   FileCheck2,
-  Clock,
-  AlertTriangle,
-  Files,
-  UploadCloud,
-  RefreshCw,
-  HardDrive,
-  Cpu,
   Database,
-  ArrowUpRight,
-  WifiOff,
-  Wifi,
+  Clock,
+  AlertCircle,
+  UploadCloud,
+  Search,
+  MessageSquareText,
+  BarChart3,
+  ArrowRight,
+  Send,
 } from 'lucide-react';
 import {
   ResponsiveContainer,
-  AreaChart,
-  Area,
+  LineChart,
+  Line,
   XAxis,
   YAxis,
   CartesianGrid,
   Tooltip,
-  BarChart,
-  Bar,
   Legend,
 } from 'recharts';
 import { useApp } from '../context/AppContext';
-import { documentService } from '../services/documentService';
-import { AnalyticsSummary } from '../types';
-import { ConfidenceIndicator } from '../components/common/ConfidenceIndicator';
+import { useLanguage } from '../context/LanguageContext';
+import {
+  LEKHA_ASSETS,
+  MONTHLY_TREND_SERIES,
+  WEEKLY_TREND_SERIES,
+} from '../data/mockData';
 
 export const DashboardPage: React.FC = () => {
   const navigate = useNavigate();
-  const {
-    user,
-    documents,
-    offlineState,
-    syncOfflineQueue,
-    backendMode,
-  } = useApp();
+  const { documents, selectedDepartment, backendMode, auditLogs } = useApp();
+  const { t } = useLanguage();
 
-  const [analytics, setAnalytics] = useState<AnalyticsSummary | null>(null);
+  const [chartRange, setChartRange] = useState<'weekly' | 'monthly'>('weekly');
+  const [dateFilter, setDateFilter] = useState<string>('');
+  const [askInput, setAskInput] = useState('');
 
-  useEffect(() => {
-    let active = true;
-    documentService.fetchAnalytics(documents).then((data) => {
-      if (active) setAnalytics(data);
-    });
-    return () => {
-      active = false;
-    };
-  }, [documents]);
+  const scopedDocs = useMemo(
+    () =>
+      selectedDepartment === 'all'
+        ? documents
+        : documents.filter((d) => d.departmentId === selectedDepartment),
+    [documents, selectedDepartment]
+  );
 
-  const totalDocs = analytics?.totalProcessed ?? 2704;
-  const pendingDocs = analytics?.pendingCount ?? 159;
-  const verifiedDocs = analytics?.verifiedCount ?? 2423;
-  const lowConfDocs = analytics?.lowConfidenceCount ?? 122;
+  const stats = useMemo(() => {
+    const processed = scopedDocs.length;
+    const saved = scopedDocs.length;
+    const pendingVerif = scopedDocs.filter(
+      (d) =>
+        d.workflowStage === 'Received' ||
+        d.workflowStage === 'Digitized' ||
+        d.needsReviewCount > 0
+    ).length;
+    const pendingAction = scopedDocs.filter(
+      (d) =>
+        d.workflowStage === 'Assigned' || d.workflowStage === 'Action Pending'
+    ).length;
+    return { processed, saved, pendingVerif, pendingAction };
+  }, [scopedDocs]);
 
-  const languageStats = [
-    {
-      label: 'Kannada (ಕನ್ನಡ)',
-      count: analytics?.kannadaCount ?? 1123,
-      share: '41.5%',
-      color: 'bg-[#0F294A] dark:bg-blue-500',
-    },
-    {
-      label: 'Bilingual (KN + EN)',
-      count: analytics?.bilingualCount ?? 893,
-      share: '33.0%',
-      color: 'bg-[#D97706]',
-    },
-    {
-      label: 'English',
-      count: analytics?.englishCount ?? 688,
-      share: '25.5%',
-      color: 'bg-[#15803D]',
-    },
-  ];
+  const chartData =
+    chartRange === 'weekly' ? WEEKLY_TREND_SERIES : MONTHLY_TREND_SERIES;
+
+  const handleAskSubmit = (e: React.FormEvent) => {
+    e.preventDefault();
+    const q = askInput.trim();
+    navigate(q ? `/nammadocs?q=${encodeURIComponent(q)}` : '/nammadocs');
+  };
 
   return (
-    <div className="space-y-8">
-      {/* Hero / Welcome Banner */}
-      <section className="bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 rounded-lg p-6 flex flex-col lg:flex-row lg:items-center lg:justify-between gap-6">
-        <div className="space-y-2 max-w-2xl">
-          <div className="text-xs font-medium text-slate-500 dark:text-slate-400">
-            {user?.district || 'Bengaluru Rural'} District Node ·{' '}
-            {backendMode === 'demo'
-              ? 'Demo Simulation Mode'
-              : 'Live Python FastAPI Connected'}
-          </div>
-          <h1 className="font-display text-2xl sm:text-3xl font-bold text-slate-900 dark:text-white tracking-tight text-balance">
-            Welcome to SARKAR AI
-          </h1>
-          <p className="text-sm text-slate-600 dark:text-slate-400 leading-relaxed">
-            Offline Intelligent Government Document Processing System for digitizing handwritten
-            Kannada and English forms with field-wise confidence verification.
-          </p>
-        </div>
-
-        <div className="flex flex-wrap items-center gap-3 shrink-0">
-          <button
-            type="button"
-            onClick={() => navigate('/upload')}
-            className="inline-flex items-center gap-2 px-4 py-2.5 rounded-md bg-[#0F294A] hover:bg-[#1E3A8A] text-white text-sm font-semibold transition-colors whitespace-nowrap"
-          >
-            <UploadCloud className="w-4 h-4" />
-            <span>Process New Document</span>
-          </button>
-          <button
-            type="button"
-            onClick={() => navigate('/documents')}
-            className="inline-flex items-center gap-2 px-4 py-2.5 rounded-md border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-900 hover:bg-slate-50 dark:hover:bg-slate-800 text-slate-800 dark:text-slate-200 text-sm font-medium transition-colors whitespace-nowrap"
-          >
-            <span>Review Queue</span>
-            <ArrowUpRight className="w-4 h-4" />
-          </button>
-        </div>
-      </section>
-
-      {/* 4 KPI Summary Strip */}
-      <section className="grid grid-cols-1 sm:grid-cols-2 xl:grid-cols-4 gap-4">
-        <div className="bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 rounded-lg p-5">
-          <div className="flex items-center justify-between text-xs font-medium text-slate-500 dark:text-slate-400">
-            <span>Total Documents Processed</span>
-            <Files className="w-4 h-4 text-[#1E3A8A] dark:text-blue-400" />
-          </div>
-          <div className="mt-3 font-mono tabular-nums text-3xl font-bold text-slate-900 dark:text-white">
-            {totalDocs.toLocaleString()}
-          </div>
-          <div className="mt-2 text-xs text-slate-500 dark:text-slate-400">
-            Across 10 Karnataka departments · Avg {analytics?.avgConfidence ?? 87}% conf
-          </div>
-        </div>
-
-        <div className="bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 rounded-lg p-5">
-          <div className="flex items-center justify-between text-xs font-medium text-slate-500 dark:text-slate-400">
-            <span>Verified Documents</span>
-            <FileCheck2 className="w-4 h-4 text-emerald-600 dark:text-emerald-400" />
-          </div>
-          <div className="mt-3 font-mono tabular-nums text-3xl font-bold text-slate-900 dark:text-white">
-            {verifiedDocs.toLocaleString()}
-          </div>
-          <div className="mt-2 text-xs text-emerald-700 dark:text-emerald-400 font-medium">
-            89.6% officer sign-off rate
-          </div>
-        </div>
-
-        <div className="bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 rounded-lg p-5">
-          <div className="flex items-center justify-between text-xs font-medium text-slate-500 dark:text-slate-400">
-            <span>Pending Documents</span>
-            <Clock className="w-4 h-4 text-amber-600 dark:text-amber-400" />
-          </div>
-          <div className="mt-3 font-mono tabular-nums text-3xl font-bold text-slate-900 dark:text-white">
-            {pendingDocs.toLocaleString()}
-          </div>
-          <div className="mt-2 text-xs text-slate-500 dark:text-slate-400">
-            Awaiting manual split-screen review
-          </div>
-        </div>
-
-        <div className="bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 rounded-lg p-5">
-          <div className="flex items-center justify-between text-xs font-medium text-slate-500 dark:text-slate-400">
-            <span>Low-Confidence Documents</span>
-            <AlertTriangle className="w-4 h-4 text-red-600 dark:text-red-400" />
-          </div>
-          <div className="mt-3 font-mono tabular-nums text-3xl font-bold text-slate-900 dark:text-white">
-            {lowConfDocs.toLocaleString()}
-          </div>
-          <div className="mt-2 text-xs text-red-700 dark:text-red-400 font-medium">
-            Requires handwriting check (&lt;65% fields)
-          </div>
-        </div>
-      </section>
-
-      {/* Charts Row: Processing Activity + Kannada/English Stats */}
-      <section className="grid grid-cols-1 lg:grid-cols-12 gap-6">
-        <div className="lg:col-span-8 bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 rounded-lg p-5">
-          <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-2 mb-5">
-            <div>
-              <h2 className="font-display text-base font-semibold text-slate-900 dark:text-white">
-                Processing Activity (7-Day Volume)
-              </h2>
-              <p className="text-xs text-slate-500 dark:text-slate-400">
-                Daily digitized forms vs verified citizen records
+    <div className="space-y-6">
+      {/* Welcome Banner with Vidhana Soudha Visual */}
+      <section className="rounded-2xl overflow-hidden bg-gradient-to-r from-[#0B2545] via-[#13315C] to-[#1D4ED8] text-white shadow-md">
+        <div className="grid grid-cols-1 lg:grid-cols-12 items-stretch">
+          <div className="lg:col-span-7 p-6 sm:p-8 flex flex-col justify-between gap-4">
+            <div className="space-y-2.5">
+              <div className="text-xs font-medium text-blue-200">
+                {backendMode === 'demo' ? t('dash.demoBanner') : t('dash.liveBanner')}
+              </div>
+              <h1 className="font-display text-2xl sm:text-3xl font-bold tracking-tight text-balance">
+                {t('dash.welcomeTitle')}
+              </h1>
+              <p className="text-sm sm:text-base text-blue-100 font-medium">
+                {t('dash.welcomeSubtitle')}
+              </p>
+              <p className="text-xs sm:text-sm text-blue-200/90 tracking-wide">
+                {t('dash.welcomeTagline')}
               </p>
             </div>
-            <button
-              type="button"
-              onClick={() => navigate('/analytics')}
-              className="text-xs font-medium text-[#1E3A8A] dark:text-blue-400 hover:underline self-start sm:self-auto"
-            >
-              View full analytics
-            </button>
+
+            <div className="flex flex-wrap items-center gap-3 pt-2">
+              <button
+                type="button"
+                onClick={() => navigate('/scanner')}
+                className="inline-flex items-center gap-2 px-4 py-2.5 rounded-xl bg-white text-[#0B2545] hover:bg-blue-50 text-xs font-bold transition-colors whitespace-nowrap"
+              >
+                <span>{t('nav.scanner')}</span>
+                <ArrowRight className="w-3.5 h-3.5" />
+              </button>
+              <button
+                type="button"
+                onClick={() => navigate('/intake')}
+                className="inline-flex items-center gap-2 px-4 py-2.5 rounded-xl bg-white/15 hover:bg-white/25 text-white border border-white/20 text-xs font-semibold transition-colors whitespace-nowrap"
+              >
+                <UploadCloud className="w-3.5 h-3.5" />
+                <span>{t('dash.qaUpload')}</span>
+              </button>
+            </div>
+          </div>
+
+          <div className="lg:col-span-5 relative min-h-[210px] lg:min-h-full bg-[#081C36]">
+            <img
+              src={LEKHA_ASSETS.VIDHANA_SOUDHA}
+              alt="Karnataka Vidhana Soudha"
+              referrerPolicy="no-referrer"
+              className="w-full h-full object-cover object-center"
+            />
+            <div className="absolute inset-0 bg-gradient-to-r from-[#13315C]/70 via-transparent to-transparent lg:block hidden" />
+          </div>
+        </div>
+      </section>
+
+      {/* 4 KPI Statistics Cards */}
+      <section className="grid grid-cols-1 sm:grid-cols-2 xl:grid-cols-4 gap-4">
+        <div className="bg-white rounded-2xl p-5 border border-indigo-100/80 shadow-xs flex flex-col justify-between gap-3">
+          <div className="flex items-center justify-between">
+            <span className="text-xs font-semibold text-slate-500">
+              {t('dash.statProcessed')}
+            </span>
+            <div className="w-9 h-9 rounded-xl bg-blue-50 text-[#2563EB] flex items-center justify-center">
+              <FileCheck2 className="w-4 h-4" />
+            </div>
+          </div>
+          <div className="font-mono tabular-nums text-3xl font-bold text-[#0B2545]">
+            {stats.processed}
+          </div>
+          <div className="text-xs text-emerald-700 font-medium">
+            {t('dash.trendProcessed')}
+          </div>
+        </div>
+
+        <div className="bg-white rounded-2xl p-5 border border-indigo-100/80 shadow-xs flex flex-col justify-between gap-3">
+          <div className="flex items-center justify-between">
+            <span className="text-xs font-semibold text-slate-500">
+              {t('dash.statSaved')}
+            </span>
+            <div className="w-9 h-9 rounded-xl bg-indigo-50 text-[#13315C] flex items-center justify-center">
+              <Database className="w-4 h-4" />
+            </div>
+          </div>
+          <div className="font-mono tabular-nums text-3xl font-bold text-[#0B2545]">
+            {stats.saved}
+          </div>
+          <div className="text-xs text-slate-500">{t('dash.trendSaved')}</div>
+        </div>
+
+        <div className="bg-white rounded-2xl p-5 border border-indigo-100/80 shadow-xs flex flex-col justify-between gap-3">
+          <div className="flex items-center justify-between">
+            <span className="text-xs font-semibold text-slate-500">
+              {t('dash.statPendingVerif')}
+            </span>
+            <div className="w-9 h-9 rounded-xl bg-amber-50 text-amber-700 flex items-center justify-center">
+              <Clock className="w-4 h-4" />
+            </div>
+          </div>
+          <div className="font-mono tabular-nums text-3xl font-bold text-[#0B2545]">
+            {stats.pendingVerif}
+          </div>
+          <div className="text-xs text-amber-700 font-medium">
+            {t('dash.trendVerif')}
+          </div>
+        </div>
+
+        <div className="bg-white rounded-2xl p-5 border border-indigo-100/80 shadow-xs flex flex-col justify-between gap-3">
+          <div className="flex items-center justify-between">
+            <span className="text-xs font-semibold text-slate-500">
+              {t('dash.statPendingAction')}
+            </span>
+            <div className="w-9 h-9 rounded-xl bg-sky-50 text-sky-700 flex items-center justify-center">
+              <AlertCircle className="w-4 h-4" />
+            </div>
+          </div>
+          <div className="font-mono tabular-nums text-3xl font-bold text-[#0B2545]">
+            {stats.pendingAction}
+          </div>
+          <div className="text-xs text-slate-500">{t('dash.trendAction')}</div>
+        </div>
+      </section>
+
+      {/* Middle Row: Interactive Line Chart + Quick Actions */}
+      <section className="grid grid-cols-1 lg:grid-cols-12 gap-6">
+        <div className="lg:col-span-8 bg-white rounded-2xl p-5 sm:p-6 border border-indigo-100/80 shadow-xs">
+          <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 mb-5">
+            <div>
+              <h2 className="font-display text-base font-bold text-[#0B2545]">
+                {t('dash.overviewTitle')}
+              </h2>
+              <p className="text-xs text-slate-500 mt-0.5">{t('dash.overviewSub')}</p>
+            </div>
+
+            <div className="flex flex-wrap items-center gap-2">
+              <input
+                type="date"
+                aria-label={t('files.filterDate')}
+                value={dateFilter}
+                onChange={(e) => setDateFilter(e.target.value)}
+                className="px-2.5 py-1 text-xs rounded-lg bg-[#F3F4FA] border border-indigo-100 text-slate-700"
+              />
+              <div className="inline-flex p-0.5 rounded-lg bg-[#EEF1FA] border border-indigo-100">
+                <button
+                  type="button"
+                  onClick={() => setChartRange('weekly')}
+                  className={`px-3 py-1 rounded-md text-xs font-semibold transition-colors ${
+                    chartRange === 'weekly'
+                      ? 'bg-[#0B2545] text-white'
+                      : 'text-slate-600 hover:text-slate-900'
+                  }`}
+                >
+                  {t('dash.rangeWeekly')}
+                </button>
+                <button
+                  type="button"
+                  onClick={() => setChartRange('monthly')}
+                  className={`px-3 py-1 rounded-md text-xs font-semibold transition-colors ${
+                    chartRange === 'monthly'
+                      ? 'bg-[#0B2545] text-white'
+                      : 'text-slate-600 hover:text-slate-900'
+                  }`}
+                >
+                  {t('dash.rangeMonthly')}
+                </button>
+              </div>
+            </div>
           </div>
 
           <div className="h-72 w-full">
             <ResponsiveContainer width="100%" height="100%">
-              <AreaChart
-                data={analytics?.dailyActivity || []}
-                margin={{ top: 8, right: 12, left: -16, bottom: 0 }}
+              <LineChart
+                data={chartData}
+                margin={{ top: 8, right: 16, left: -12, bottom: 0 }}
               >
-                <defs>
-                  <linearGradient id="colorProcessed" x1="0" y1="0" x2="0" y2="1">
-                    <stop offset="5%" stopColor="#1E3A8A" stopOpacity={0.22} />
-                    <stop offset="95%" stopColor="#1E3A8A" stopOpacity={0} />
-                  </linearGradient>
-                  <linearGradient id="colorVerified" x1="0" y1="0" x2="0" y2="1">
-                    <stop offset="5%" stopColor="#15803D" stopOpacity={0.22} />
-                    <stop offset="95%" stopColor="#15803D" stopOpacity={0} />
-                  </linearGradient>
-                </defs>
-                <CartesianGrid strokeDasharray="3 3" stroke="#e2e8f0" opacity={0.45} />
-                <XAxis dataKey="day" tick={{ fontSize: 11 }} stroke="#94a3b8" />
-                <YAxis tick={{ fontSize: 11 }} stroke="#94a3b8" />
+                <CartesianGrid strokeDasharray="3 3" stroke="#E2E8F0" />
+                <XAxis dataKey="label" tick={{ fontSize: 11 }} stroke="#64748B" />
+                <YAxis tick={{ fontSize: 11 }} stroke="#64748B" />
                 <Tooltip
                   contentStyle={{
+                    borderRadius: '12px',
+                    border: '1px solid #E0E7FF',
                     fontSize: '12px',
-                    borderRadius: '8px',
-                    border: '1px solid #cbd5e1',
                   }}
                 />
                 <Legend wrapperStyle={{ fontSize: '12px' }} />
-                <Area
+                <Line
                   type="monotone"
                   dataKey="processed"
-                  name="Digitized"
-                  stroke="#1E3A8A"
-                  strokeWidth={2}
-                  fillOpacity={1}
-                  fill="url(#colorProcessed)"
+                  name={t('dash.chartProcessed')}
+                  stroke="#0B2545"
+                  strokeWidth={2.5}
+                  dot={{ r: 3.5 }}
                 />
-                <Area
+                <Line
                   type="monotone"
                   dataKey="verified"
-                  name="Verified"
-                  stroke="#15803D"
-                  strokeWidth={2}
-                  fillOpacity={1}
-                  fill="url(#colorVerified)"
+                  name={t('dash.chartVerified')}
+                  stroke="#2563EB"
+                  strokeWidth={2.5}
+                  dot={{ r: 3.5 }}
                 />
-              </AreaChart>
+              </LineChart>
             </ResponsiveContainer>
           </div>
         </div>
 
-        {/* Kannada & English Document Statistics + Offline System Status */}
-        <div className="lg:col-span-4 flex flex-col gap-6">
-          <div className="bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 rounded-lg p-5">
-            <h2 className="font-display text-base font-semibold text-slate-900 dark:text-white">
-              Language Script Distribution
-            </h2>
-            <p className="text-xs text-slate-500 dark:text-slate-400 mt-0.5 mb-4">
-              Kannada, Bilingual & English handwritten forms
-            </p>
-            <div className="space-y-4">
-              {languageStats.map((item) => (
-                <div key={item.label} className="space-y-1.5">
-                  <div className="flex items-center justify-between text-xs">
-                    <span className="font-medium text-slate-800 dark:text-slate-200">
-                      {item.label}
-                    </span>
-                    <span className="font-mono tabular-nums text-slate-600 dark:text-slate-400">
-                      {item.count.toLocaleString()} ({item.share})
-                    </span>
-                  </div>
-                  <div className="w-full h-2 bg-slate-100 dark:bg-slate-800 rounded-sm overflow-hidden">
-                    <div
-                      className={`h-full ${item.color}`}
-                      style={{ width: item.share }}
-                    />
-                  </div>
-                </div>
-              ))}
-            </div>
-          </div>
-
-          <div className="bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 rounded-lg p-5 flex-1 flex flex-col justify-between">
-            <div>
-              <div className="flex items-center justify-between gap-2">
-                <h2 className="font-display text-base font-semibold text-slate-900 dark:text-white">
-                  Offline System Status
-                </h2>
-                <span className="inline-flex items-center gap-1.5 text-xs font-medium text-amber-700 dark:text-amber-400">
-                  {offlineState.offlineMode ? (
-                    <>
-                      <WifiOff className="w-3.5 h-3.5" /> Offline Active
-                    </>
-                  ) : (
-                    <>
-                      <Wifi className="w-3.5 h-3.5 text-emerald-600" /> Sync Link On
-                    </>
-                  )}
-                </span>
-              </div>
-
-              <dl className="mt-4 space-y-2.5 text-xs">
-                <div className="flex items-center justify-between py-1.5 border-b border-slate-100 dark:border-slate-800">
-                  <dt className="flex items-center gap-2 text-slate-500 dark:text-slate-400">
-                    <Cpu className="w-3.5 h-3.5" /> Local OCR Engine
-                  </dt>
-                  <dd className="font-medium text-slate-900 dark:text-slate-100">
-                    {offlineState.ocrEngine.status}
-                  </dd>
-                </div>
-                <div className="flex items-center justify-between py-1.5 border-b border-slate-100 dark:border-slate-800">
-                  <dt className="flex items-center gap-2 text-slate-500 dark:text-slate-400">
-                    <Database className="w-3.5 h-3.5" /> Local Database
-                  </dt>
-                  <dd className="font-mono tabular-nums text-slate-900 dark:text-slate-100">
-                    {offlineState.localDatabase.cachedRecords} records ·{' '}
-                    {offlineState.localDatabase.storageUsedMb} MB
-                  </dd>
-                </div>
-                <div className="flex items-center justify-between py-1.5 border-b border-slate-100 dark:border-slate-800">
-                  <dt className="flex items-center gap-2 text-slate-500 dark:text-slate-400">
-                    <HardDrive className="w-3.5 h-3.5" /> Local AI Model
-                  </dt>
-                  <dd className="font-medium text-slate-900 dark:text-slate-100">
-                    {offlineState.localAiModel.name}
-                  </dd>
-                </div>
-              </dl>
-            </div>
-
-            <div className="mt-4 pt-3 flex items-center justify-between gap-3">
-              <div className="text-xs text-slate-600 dark:text-slate-400 tabular-nums">
-                Sync Queue:{' '}
-                <strong className="text-slate-900 dark:text-white">
-                  {offlineState.syncStatus.pendingSyncCount} pending
-                </strong>
-              </div>
-              <button
-                type="button"
-                onClick={syncOfflineQueue}
-                className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-md border border-slate-200 dark:border-slate-700 text-xs font-medium text-slate-800 dark:text-slate-200 hover:bg-slate-50 dark:hover:bg-slate-800 transition-colors whitespace-nowrap"
-              >
-                <RefreshCw className="w-3.5 h-3.5" />
-                <span>Sync Now</span>
-              </button>
-            </div>
-          </div>
-        </div>
-      </section>
-
-      {/* Department-wise Analytics Chart */}
-      <section className="bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 rounded-lg p-5">
-        <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-2 mb-5">
+        {/* 4 Functional Quick Actions */}
+        <div className="lg:col-span-4 bg-white rounded-2xl p-5 sm:p-6 border border-indigo-100/80 shadow-xs flex flex-col justify-between gap-4">
           <div>
-            <h2 className="font-display text-base font-semibold text-slate-900 dark:text-white">
-              Department-wise Digitization Analytics
+            <h2 className="font-display text-base font-bold text-[#0B2545]">
+              {t('dash.quickActions')}
             </h2>
-            <p className="text-xs text-slate-500 dark:text-slate-400">
-              Volume processed and verified across all 10 government departments
-            </p>
+            <p className="text-xs text-slate-500 mt-0.5">{t('dash.welcomeTagline')}</p>
           </div>
-          <button
-            type="button"
-            onClick={() => navigate('/departments')}
-            className="text-xs font-medium text-[#1E3A8A] dark:text-blue-400 hover:underline self-start sm:self-auto"
-          >
-            Explore all 10 departments
-          </button>
-        </div>
 
-        <div className="h-72 w-full">
-          <ResponsiveContainer width="100%" height="100%">
-            <BarChart
-              data={analytics?.departmentStats || []}
-              margin={{ top: 8, right: 12, left: -16, bottom: 0 }}
+          <div className="grid grid-cols-1 gap-3 flex-1">
+            <button
+              type="button"
+              onClick={() => navigate('/intake')}
+              className="flex items-center justify-between p-3.5 rounded-xl bg-[#F3F4FA] hover:bg-blue-50 border border-indigo-100 text-left transition-colors group"
             >
-              <CartesianGrid strokeDasharray="3 3" stroke="#e2e8f0" opacity={0.45} />
-              <XAxis dataKey="shortCode" tick={{ fontSize: 11 }} stroke="#94a3b8" />
-              <YAxis tick={{ fontSize: 11 }} stroke="#94a3b8" />
-              <Tooltip
-                contentStyle={{
-                  fontSize: '12px',
-                  borderRadius: '8px',
-                  border: '1px solid #cbd5e1',
-                }}
-              />
-              <Legend wrapperStyle={{ fontSize: '12px' }} />
-              <Bar dataKey="processed" name="Processed" fill="#0F294A" radius={[3, 3, 0, 0]} />
-              <Bar dataKey="verified" name="Verified" fill="#15803D" radius={[3, 3, 0, 0]} />
-            </BarChart>
-          </ResponsiveContainer>
+              <div className="flex items-center gap-3">
+                <div className="w-9 h-9 rounded-lg bg-[#0B2545] text-white flex items-center justify-center shrink-0">
+                  <UploadCloud className="w-4 h-4" />
+                </div>
+                <div>
+                  <div className="text-xs font-bold text-[#0B2545]">{t('dash.qaUpload')}</div>
+                  <div className="text-[11px] text-slate-500">{t('dash.qaUploadDesc')}</div>
+                </div>
+              </div>
+              <ArrowRight className="w-4 h-4 text-slate-400 group-hover:text-[#2563EB]" />
+            </button>
+
+            <button
+              type="button"
+              onClick={() => navigate('/files')}
+              className="flex items-center justify-between p-3.5 rounded-xl bg-[#F3F4FA] hover:bg-blue-50 border border-indigo-100 text-left transition-colors group"
+            >
+              <div className="flex items-center gap-3">
+                <div className="w-9 h-9 rounded-lg bg-[#2563EB] text-white flex items-center justify-center shrink-0">
+                  <Search className="w-4 h-4" />
+                </div>
+                <div>
+                  <div className="text-xs font-bold text-[#0B2545]">{t('dash.qaSearch')}</div>
+                  <div className="text-[11px] text-slate-500">{t('dash.qaSearchDesc')}</div>
+                </div>
+              </div>
+              <ArrowRight className="w-4 h-4 text-slate-400 group-hover:text-[#2563EB]" />
+            </button>
+
+            <button
+              type="button"
+              onClick={() => navigate('/nammadocs')}
+              className="flex items-center justify-between p-3.5 rounded-xl bg-[#F3F4FA] hover:bg-blue-50 border border-indigo-100 text-left transition-colors group"
+            >
+              <div className="flex items-center gap-3">
+                <div className="w-9 h-9 rounded-lg bg-[#1D4ED8] text-white flex items-center justify-center shrink-0">
+                  <MessageSquareText className="w-4 h-4" />
+                </div>
+                <div>
+                  <div className="text-xs font-bold text-[#0B2545]">{t('dash.qaAsk')}</div>
+                  <div className="text-[11px] text-slate-500">{t('dash.qaAskDesc')}</div>
+                </div>
+              </div>
+              <ArrowRight className="w-4 h-4 text-slate-400 group-hover:text-[#2563EB]" />
+            </button>
+
+            <button
+              type="button"
+              onClick={() => navigate('/reports')}
+              className="flex items-center justify-between p-3.5 rounded-xl bg-[#F3F4FA] hover:bg-blue-50 border border-indigo-100 text-left transition-colors group"
+            >
+              <div className="flex items-center gap-3">
+                <div className="w-9 h-9 rounded-lg bg-sky-600 text-white flex items-center justify-center shrink-0">
+                  <BarChart3 className="w-4 h-4" />
+                </div>
+                <div>
+                  <div className="text-xs font-bold text-[#0B2545]">{t('dash.qaReports')}</div>
+                  <div className="text-[11px] text-slate-500">{t('dash.qaReportsDesc')}</div>
+                </div>
+              </div>
+              <ArrowRight className="w-4 h-4 text-slate-400 group-hover:text-[#2563EB]" />
+            </button>
+          </div>
         </div>
       </section>
 
-      {/* Recent Documents Table */}
-      <section className="bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 rounded-lg overflow-hidden">
-        <div className="px-5 py-4 border-b border-slate-200 dark:border-slate-800 flex items-center justify-between gap-4">
-          <div>
-            <h2 className="font-display text-base font-semibold text-slate-900 dark:text-white">
-              Recent Handwritten Form Extractions
+      {/* Bottom Row: Recent Activity + Ask NammaDocs Preview */}
+      <section className="grid grid-cols-1 lg:grid-cols-12 gap-6">
+        {/* Recent Activity */}
+        <div className="lg:col-span-6 bg-white rounded-2xl p-5 sm:p-6 border border-indigo-100/80 shadow-xs space-y-4">
+          <div className="flex items-center justify-between">
+            <h2 className="font-display text-base font-bold text-[#0B2545]">
+              {t('dash.recentActivity')}
             </h2>
-            <p className="text-xs text-slate-500 dark:text-slate-400">
-              Select any record to launch Split-Screen Verification
-            </p>
+            <button
+              type="button"
+              onClick={() => navigate('/audit')}
+              className="text-xs font-semibold text-[#2563EB] hover:underline"
+            >
+              {t('dash.viewAll')}
+            </button>
           </div>
-          <button
-            type="button"
-            onClick={() => navigate('/documents')}
-            className="text-xs font-medium text-[#1E3A8A] dark:text-blue-400 hover:underline whitespace-nowrap"
-          >
-            View all records
-          </button>
+
+          <div className="divide-y divide-indigo-50">
+            {auditLogs.slice(0, 5).map((log) => (
+              <div key={log.id} className="py-3 flex items-start justify-between gap-3">
+                <div className="min-w-0">
+                  <div className="text-xs font-semibold text-slate-900">
+                    {log.action} · <span className="font-mono">{log.targetRef}</span>
+                  </div>
+                  <div className="text-xs text-slate-500 mt-0.5 truncate">
+                    {log.details}
+                  </div>
+                </div>
+                <div className="text-right shrink-0">
+                  <div className="text-[11px] font-medium text-[#2563EB]">
+                    {t(`dept.${log.departmentId}`)}
+                  </div>
+                  <div className="text-[10px] font-mono tabular-nums text-slate-400">
+                    {new Date(log.timestamp).toLocaleTimeString([], {
+                      hour: '2-digit',
+                      minute: '2-digit',
+                    })}
+                  </div>
+                </div>
+              </div>
+            ))}
+          </div>
         </div>
 
-        <div className="overflow-x-auto">
-          <table className="w-full text-left border-collapse">
-            <thead>
-              <tr className="border-b border-slate-200 dark:border-slate-800 bg-slate-50 dark:bg-slate-950/50 text-[11px] font-semibold text-slate-500 dark:text-slate-400">
-                <th className="py-3 px-4">Application No.</th>
-                <th className="py-3 px-4">Applicant / Form</th>
-                <th className="py-3 px-4">Department</th>
-                <th className="py-3 px-4">Language</th>
-                <th className="py-3 px-4">Confidence</th>
-                <th className="py-3 px-4">Status</th>
-                <th className="py-3 px-4 text-right">Action</th>
-              </tr>
-            </thead>
-            <tbody className="divide-y divide-slate-200 dark:divide-slate-800 text-xs">
-              {documents.slice(0, 6).map((doc) => (
-                <tr
-                  key={doc.id}
-                  className="hover:bg-slate-50 dark:hover:bg-slate-800/40 transition-colors"
-                >
-                  <td className="py-3 px-4 font-mono tabular-nums font-medium text-slate-900 dark:text-slate-100 whitespace-nowrap">
-                    {doc.applicationNumber}
-                  </td>
-                  <td className="py-3 px-4">
-                    <div className="font-medium text-slate-900 dark:text-slate-100">
-                      {doc.applicantName}
-                    </div>
-                    <div className="text-[11px] text-slate-500 dark:text-slate-400">
-                      {doc.formType} · {doc.district}
-                    </div>
-                  </td>
-                  <td className="py-3 px-4 text-slate-700 dark:text-slate-300 whitespace-nowrap">
-                    {doc.departmentName}
-                  </td>
-                  <td className="py-3 px-4 text-slate-600 dark:text-slate-400 whitespace-nowrap">
-                    {doc.language}
-                  </td>
-                  <td className="py-3 px-4 whitespace-nowrap">
-                    <ConfidenceIndicator score={doc.overallConfidence} compact />
-                  </td>
-                  <td className="py-3 px-4 whitespace-nowrap">
-                    <span
-                      className={`font-medium ${
-                        doc.status === 'Verified'
-                          ? 'text-emerald-700 dark:text-emerald-400'
-                          : doc.status === 'Low Confidence'
-                            ? 'text-red-700 dark:text-red-400'
-                            : 'text-amber-700 dark:text-amber-400'
-                      }`}
-                    >
-                      {doc.status}
-                    </span>
-                  </td>
-                  <td className="py-3 px-4 text-right whitespace-nowrap">
-                    <button
-                      type="button"
-                      onClick={() => navigate(`/documents/${doc.id}`)}
-                      className="text-xs font-semibold text-[#1E3A8A] dark:text-blue-400 hover:underline"
-                    >
-                      Review Data
-                    </button>
-                  </td>
-                </tr>
-              ))}
-            </tbody>
-          </table>
+        {/* Ask NammaDocs AI Preview */}
+        <div className="lg:col-span-6 bg-gradient-to-br from-white to-[#EEF1FA] rounded-2xl p-5 sm:p-6 border border-indigo-100 shadow-xs flex flex-col justify-between gap-4">
+          <div className="flex items-start gap-4">
+            <img
+              src={LEKHA_ASSETS.NAMMADOCS_BOT}
+              alt="Ask NammaDocs Assistant"
+              referrerPolicy="no-referrer"
+              className="w-16 h-16 rounded-2xl object-cover border border-indigo-100 shrink-0"
+            />
+            <div className="min-w-0">
+              <h2 className="font-display text-base font-bold text-[#0B2545]">
+                {t('dash.askPreviewTitle')}
+              </h2>
+              <p className="text-xs text-slate-600 mt-1 leading-relaxed">
+                {t('dash.askPreviewSub')}
+              </p>
+            </div>
+          </div>
+
+          <form onSubmit={handleAskSubmit} className="flex items-center gap-2">
+            <input
+              type="text"
+              value={askInput}
+              onChange={(e) => setAskInput(e.target.value)}
+              placeholder={t('dash.askPreviewPlaceholder')}
+              className="flex-1 min-w-0 px-3.5 py-2.5 text-xs rounded-xl bg-white border border-indigo-200 text-slate-900 focus:outline-none focus:ring-2 focus:ring-[#2563EB]"
+            />
+            <button
+              type="submit"
+              className="inline-flex items-center gap-1.5 px-4 py-2.5 rounded-xl bg-[#0B2545] hover:bg-[#13315C] text-white text-xs font-semibold transition-colors whitespace-nowrap shrink-0"
+            >
+              <Send className="w-3.5 h-3.5" />
+              <span>{t('dash.askPreviewBtn')}</span>
+            </button>
+          </form>
+
+          <div className="flex flex-wrap gap-2">
+            {[
+              'Find all applications from Belagavi this month',
+              'Show complaints with missing addresses',
+              'Find application KA2025/1047',
+            ].map((q) => (
+              <button
+                key={q}
+                type="button"
+                onClick={() => navigate(`/nammadocs?q=${encodeURIComponent(q)}`)}
+                className="px-3 py-1.5 rounded-lg bg-white border border-indigo-100 hover:border-[#2563EB] text-[11px] font-medium text-slate-700 transition-colors"
+              >
+                {q}
+              </button>
+            ))}
+          </div>
         </div>
       </section>
     </div>

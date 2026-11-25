@@ -1,150 +1,161 @@
-export type LanguageMode = 'Kannada' | 'English' | 'Automatic';
-export type DocumentLanguage = 'Kannada' | 'English' | 'Bilingual (KN + EN)';
-export type VerificationStatus = 'Verified' | 'Pending Review' | 'Low Confidence' | 'Processing';
-export type ConfidenceBand = 'High' | 'Medium' | 'Low';
+export type AppLanguage = 'en' | 'kn';
+
+export type UserRole =
+  | 'Administrator'
+  | 'Officer'
+  | 'Data Entry Operator'
+  | 'Reviewer';
+
+export type DepartmentId =
+  | 'all'
+  | 'police'
+  | 'gram_panchayat'
+  | 'revenue'
+  | 'hospitals'
+  | 'education'
+  | 'municipal';
+
+export type WorkflowStage =
+  | 'Received'
+  | 'Digitized'
+  | 'Verified'
+  | 'Assigned'
+  | 'Action Pending'
+  | 'Completed';
+
+export type FieldReviewState =
+  | 'HighConfidence'
+  | 'NeedsHumanReview'
+  | 'MissingOrInvalid';
+
+export type InputLanguageMode = 'Kannada' | 'English' | 'Both';
+
 export type BackendMode = 'demo' | 'fastapi';
 
 export interface ExtractedField {
   key: string;
-  label: string;
-  labelKn?: string;
+  labelKey: string;
+  customLabel?: string;
   value: string;
-  confidence: number; // 0 to 100
-  isCore?: boolean;
+  reviewState: FieldReviewState;
+  modelConfidence?: number; // Only populated if returned by OCR backend
+  issueNoteKey?: string;
+  customIssueNote?: string;
   required?: boolean;
-  ocrNote?: string;
-  lastEditedBy?: string;
 }
 
-export interface DocumentRecord {
+export interface CorrectionEntry {
   id: string;
-  applicationNumber: string;
+  timestamp: string;
+  officerName: string;
+  fieldKey: string;
+  previousValue: string;
+  updatedValue: string;
+  actionType: 'Edited' | 'Verified' | 'Returned';
+  note?: string;
+}
+
+export interface LekhaDocument {
+  id: string;
+  referenceNumber: string;
   title: string;
-  departmentId: string;
-  departmentName: string;
-  formType: string;
-  language: DocumentLanguage;
-  detectedScripts: string[];
-  applicantName: string;
-  fatherName: string;
-  address: string;
-  village: string;
+  departmentId: Exclude<DepartmentId, 'all'>;
+  category: string;
+  officeName: string;
   district: string;
-  formDate: string;
-  uploadedAt: string;
-  processedAt: string;
+  village: string;
+  applicantName: string;
+  contactNumber: string;
+  address: string;
+  inputLanguage: InputLanguageMode;
+  createdAt: string;
+  updatedAt: string;
   fileName: string;
   fileType: 'image/jpeg' | 'image/png' | 'application/pdf';
   imageUrl: string;
-  status: VerificationStatus;
-  overallConfidence: number;
-  confidenceBand: ConfidenceBand;
-  syncedToCentral: boolean;
-  processingMode: 'Demo Simulation' | 'FastAPI OCR Engine';
-  assignedOfficer: string;
+  recognizedText: string;
+  workflowStage: WorkflowStage;
+  assignedTo: string;
+  ocrSource: 'Sample Simulation' | 'FastAPI Local OCR';
+  hasMissingFields: boolean;
+  needsReviewCount: number;
   fields: ExtractedField[];
+  attachments: string[];
+  correctionHistory: CorrectionEntry[];
 }
 
-export interface Department {
+export interface PoliceComplaintRecord {
+  id: string;
+  internalRefNumber: string;
+  policeStation: string;
+  submittedAt: string;
+  complainantName: string;
+  contactNumber: string;
+  address: string;
+  incidentDate: string;
+  incidentLocation: string;
+  inputMode: InputLanguageMode;
+  narrativeEn: string;
+  narrativeKn: string;
+  supportingDocs: string[];
+  status: 'Draft' | 'Submitted for Officer Review' | 'Verified';
+  createdBy: string;
+}
+
+export interface DepartmentConfig {
+  id: Exclude<DepartmentId, 'all'>;
+  nameKey: string;
+  iconName: string;
+  categories: string[];
+  configurableFields: string[];
+  workflowStages: WorkflowStage[];
+  accentHex: string;
+}
+
+export interface AppNotification {
+  id: string;
+  type:
+    | 'new_document'
+    | 'awaiting_verification'
+    | 'task_assigned'
+    | 'document_returned'
+    | 'task_completed';
+  titleKey: string;
+  message: string;
+  timestamp: string;
+  read: boolean;
+  documentId?: string;
+  departmentId?: Exclude<DepartmentId, 'all'>;
+}
+
+export interface AuditLogEntry {
+  id: string;
+  timestamp: string;
+  actor: string;
+  role: UserRole;
+  action: 'Created' | 'Modified' | 'Status Changed' | 'Verified' | 'Returned' | 'Exported' | 'Deleted' | 'Backup';
+  targetRef: string;
+  departmentId: DepartmentId;
+  previousValue?: string;
+  updatedValue?: string;
+  details: string;
+}
+
+export interface OfficerProfile {
   id: string;
   name: string;
   nameKn: string;
-  shortCode: string;
-  iconName: string;
-  description: string;
-  formCategories: string[];
-  totalProcessed: number;
-  avgConfidence: number;
-  pendingCount: number;
-  accentColor: string;
-}
-
-export interface ProcessingStage {
-  id: string;
-  stepNumber: number;
-  title: string;
-  subtitle: string;
-  engineModule: string;
-  estimatedMs: number;
-  status: 'waiting' | 'running' | 'completed' | 'error';
-  metrics?: string;
-}
-
-export interface HistoryEvent {
-  id: string;
-  timestamp: string;
-  documentId: string;
-  applicationNumber: string;
-  departmentName: string;
-  action: 'Uploaded' | 'OCR Processed' | 'Field Edited' | 'Verified' | 'Exported' | 'Synced';
-  actor: string;
-  details: string;
-  mode: 'Demo Simulation' | 'FastAPI Live';
-}
-
-export interface AnalyticsSummary {
-  totalProcessed: number;
-  pendingCount: number;
-  verifiedCount: number;
-  lowConfidenceCount: number;
-  avgConfidence: number;
-  kannadaCount: number;
-  englishCount: number;
-  bilingualCount: number;
-  dailyActivity: Array<{
-    day: string;
-    processed: number;
-    verified: number;
-    kannada: number;
-    english: number;
-  }>;
-  departmentStats: Array<{
-    department: string;
-    shortCode: string;
-    processed: number;
-    verified: number;
-    avgConfidence: number;
-  }>;
-  confidenceDistribution: Array<{
-    range: string;
-    count: number;
-    band: ConfidenceBand;
-  }>;
-}
-
-export interface OfficerUser {
-  id: string;
-  name: string;
-  designation: string;
-  department: string;
-  district: string;
-  employeeCode: string;
-  email: string;
+  role: UserRole;
+  departmentId: DepartmentId;
+  office: string;
+  employeeId: string;
   avatarUrl: string;
 }
 
-export interface OfflineSystemState {
-  offlineMode: boolean;
-  ocrEngine: {
-    name: string;
-    status: 'Ready (Local)' | 'Busy' | 'Offline';
-    languages: string[];
-    version: string;
-  };
-  localDatabase: {
-    engine: string;
-    status: 'Connected' | 'Syncing';
-    cachedRecords: number;
-    storageUsedMb: number;
-  };
-  localAiModel: {
-    name: string;
-    quantization: string;
-    status: 'Loaded in RAM' | 'Standby';
-  };
-  syncStatus: {
-    pendingSyncCount: number;
-    lastSyncedAt: string;
-    state: 'Local Queue Active' | 'Synchronized' | 'Syncing';
-  };
+export interface RagQueryResult {
+  answer: string;
+  matchedDocuments: LekhaDocument[];
+  matchedComplaints: PoliceComplaintRecord[];
+  found: boolean;
+  architectureNote: string;
 }
